@@ -616,16 +616,17 @@ class AssistantOrchestrator:
                 )
             )
 
+            llm_messages = context_package.messages
+
             context_span.finish(
                 output={
                     "selected_count": len(context_package.items),
                     "dropped_count": len(context_package.dropped_items),
                     "total_estimated_tokens": context_package.total_estimated_tokens,
+                    "llm_messages": llm_messages,
                     "trace": context_package.trace,
                 },
             )
-
-        llm_messages = context_package.messages
 
         yield sse_event(
             EVENT_CONTEXT_ASSEMBLED,

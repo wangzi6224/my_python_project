@@ -8,6 +8,7 @@ import {
   triggerDocumentSplit,
   uploadDocument,
 } from '@/services';
+import JsonViewer from '@/components/JsonViewer';
 import {
   CloudUploadOutlined,
   EyeOutlined,
@@ -767,18 +768,7 @@ const DocsPage: React.FC = () => {
                         </Typography.Paragraph>
                       </Descriptions.Item>
                       <Descriptions.Item label="metadata">
-                        {chunk.metadata ? (
-                          <Typography.Paragraph
-                            copyable={{
-                              text: JSON.stringify(chunk.metadata, null, 2),
-                            }}
-                            className={styles.metaText}
-                          >
-                            {JSON.stringify(chunk.metadata, null, 2)}
-                          </Typography.Paragraph>
-                        ) : (
-                          '-'
-                        )}
+                        <JsonViewer value={chunk.metadata} maxHeight={260} />
                       </Descriptions.Item>
                     </Descriptions>
                   </div>

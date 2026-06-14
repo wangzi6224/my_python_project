@@ -1,4 +1,5 @@
 import { ChatMessage } from '@/contexts/ChatContext';
+import JsonViewer from '@/components/JsonViewer';
 import type { TraceDetailResponse, TraceSpan, TraceSummary } from '@/services/api';
 import { getTrace } from '@/services/api';
 import { InfoCircleOutlined } from '@ant-design/icons';
@@ -101,15 +102,7 @@ function errorText(span: TraceSpan) {
 }
 
 function jsonBlock(value: unknown) {
-  if (value === null || value === undefined) {
-    return <Text type="secondary">-</Text>;
-  }
-
-  return (
-    <Text code className={styles.traceJson}>
-      {JSON.stringify(value, null, 2)}
-    </Text>
-  );
+  return <JsonViewer value={value} />;
 }
 
 function ioCollapse(span: TraceSpan) {

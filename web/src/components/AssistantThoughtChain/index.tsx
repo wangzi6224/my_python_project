@@ -3,6 +3,7 @@ import type {
   AssistantTraceEventStatus,
   ChatMessage,
 } from '@/contexts/ChatContext';
+import JsonViewer from '@/components/JsonViewer';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -26,10 +27,6 @@ function toRecord(value: unknown): Record<string, unknown> | undefined {
   }
 
   return undefined;
-}
-
-function formatJson(value: unknown): string {
-  return JSON.stringify(value, null, 2);
 }
 
 function getStatusIcon(status: AssistantTraceEventStatus): React.ReactNode {
@@ -102,11 +99,7 @@ function isToolTraceEvent(event: AssistantTraceEventItem): boolean {
 function renderPayload(payload?: Record<string, unknown>) {
   if (!payload || Object.keys(payload).length === 0) return undefined;
 
-  return (
-    <pre className={styles.payload}>
-      <code>{formatJson(payload)}</code>
-    </pre>
-  );
+  return <JsonViewer value={payload} maxHeight={260} />;
 }
 
 const AssistantThoughtChain: React.FC<AssistantThoughtChainProps> = ({

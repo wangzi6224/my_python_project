@@ -5,6 +5,7 @@ import {
   AgentStepItem,
   getAgentRunDetail,
 } from '@/services';
+import JsonViewer from '@/components/JsonViewer';
 import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
@@ -130,7 +131,7 @@ const renderMarkdown = (content: unknown) => (
 );
 
 const JsonBlock: React.FC<{ value: unknown }> = ({ value }) => (
-  <pre className={styles.jsonBlock}>{toJsonText(value)}</pre>
+  <JsonViewer value={value} />
 );
 
 interface ChainNode {

@@ -1,3 +1,4 @@
+import JsonViewer from '@/components/JsonViewer';
 import { callMcpTool, listMcpAuditLogs } from '@/services/mcpApi';
 import {
   Alert,
@@ -27,8 +28,6 @@ interface McpToolDetailDrawerProps {
   activeTab?: string;
   onClose: () => void;
 }
-
-const formatJson = (value: unknown): string => JSON.stringify(value || {}, null, 2);
 
 const parseArguments = (text: string): Record<string, unknown> => {
   const parsed = JSON.parse(text || '{}') as unknown;
@@ -189,7 +188,7 @@ const McpToolDetailDrawer: React.FC<McpToolDetailDrawerProps> = ({
                   </Tag>
                 </Descriptions.Item>
                 <Descriptions.Item label="metadata">
-                  <pre className={styles.codeBlock}>{formatJson(tool.metadata)}</pre>
+                  <JsonViewer value={tool.metadata || {}} />
                 </Descriptions.Item>
               </Descriptions>
             ),
@@ -197,9 +196,7 @@ const McpToolDetailDrawer: React.FC<McpToolDetailDrawerProps> = ({
           {
             key: 'schema',
             label: '参数 Schema',
-            children: (
-              <pre className={styles.codeBlock}>{formatJson(tool.input_schema)}</pre>
-            ),
+            children: <JsonViewer value={tool.input_schema || {}} />,
           },
           {
             key: 'test',

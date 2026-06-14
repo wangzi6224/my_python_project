@@ -1,4 +1,5 @@
 import { AssistantToolCallEvent } from '@/services/api';
+import JsonViewer from '@/components/JsonViewer';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -110,11 +111,7 @@ const ToolCallTimeline: React.FC<ToolCallTimelineProps> = ({ toolCalls }) => {
           {
             key: 'args',
             label: '参数',
-            children: (
-              <Text code className={styles.argCode}>
-                {JSON.stringify(tc.arguments, null, 2)}
-              </Text>
-            ),
+            children: <JsonViewer value={tc.arguments} maxHeight={260} />,
           },
         ]
       : undefined;

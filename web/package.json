@@ -24,7 +24,8 @@
     "@umijs/max": "4.6.26",
     "antd": "5.29.3",
     "axios": "1.13.4",
-    "classnames": "^2.5.1"
+    "classnames": "^2.5.1",
+    "react-json-view": "^1.21.3"
   },
   "devDependencies": {
     "@types/react": "18.3.28",

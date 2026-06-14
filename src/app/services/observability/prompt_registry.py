@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from src.app.services.observability.trace_schema import SPAN_TYPE_CONTEXT_COMPRESS
+
 
 @dataclass(frozen=True)
 class PromptSpec:
@@ -31,8 +33,8 @@ PROMPT_REGISTRY: dict[str, PromptSpec] = {
         version="2026-06-10.memory-write.v1",
         description="长期记忆抽取提示词",
     ),
-    "context.compress": PromptSpec(
-        name="context.compress",
+    SPAN_TYPE_CONTEXT_COMPRESS.value: PromptSpec(
+        name=SPAN_TYPE_CONTEXT_COMPRESS.value,
         version="2026-06-10.context-compress.v1",
         description="超长上下文压缩提示词",
     ),

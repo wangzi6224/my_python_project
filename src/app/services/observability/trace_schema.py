@@ -1,29 +1,64 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from enum import StrEnum
+from typing import Any, Final, Literal
 from pydantic import BaseModel, Field
 
 SpanStatus = Literal["running", "success", "error", "cancelled"]
 
-SpanType = Literal[
-    "assistant.run",
-    "router.decision",
-    "memory.short_term.load",
-    "memory.long_term.retrieve",
-    "memory.long_term.write",
-    "working_memory.update",
-    "context.assemble",
-    "context.final_assemble",
-    "context.compress",
-    "agent.run",
-    "planner.decision",
-    "planner.fallback",
-    "tool.call",
-    "mcp.call",
-    "llm.call",
-    "security.check",
-    "eval.judge",
-]
+
+class SpanType(StrEnum):
+    """统一 LLMOps span 类型，避免工程内散落字符串。"""
+
+    # Assistant 主链路与路由 span。
+    ASSISTANT_RUN = "assistant.run"
+    ROUTER_DECISION = "router.decision"
+
+    # 记忆相关 span，覆盖短期记忆加载、长期记忆检索和长期记忆写入。
+    MEMORY_SHORT_TERM_LOAD = "memory.short_term.load"
+    MEMORY_LONG_TERM_RETRIEVE = "memory.long_term.retrieve"
+    MEMORY_LONG_TERM_WRITE = "memory.long_term.write"
+    WORKING_MEMORY_UPDATE = "working_memory.update"
+
+    # 上下文工程 span，覆盖普通组装、Agent 最终组装和上下文压缩。
+    CONTEXT_ASSEMBLE = "context.assemble"
+    CONTEXT_FINAL_ASSEMBLE = "context.final_assemble"
+    CONTEXT_COMPRESS = "context.compress"
+
+    # Agent 规划与工具调用 span。
+    AGENT_RUN = "agent.run"
+    PLANNER_DECISION = "planner.decision"
+    PLANNER_FALLBACK = "planner.fallback"
+    TOOL_CALL = "tool.call"
+    MCP_CALL = "mcp.call"
+
+    # 模型、安全与评测 span。
+    LLM_CALL = "llm.call"
+    SECURITY_CHECK = "security.check"
+    EVAL_JUDGE = "eval.judge"
+
+
+# 对外导出的常量别名，业务代码统一引用这些名称。
+SPAN_TYPE_ASSISTANT_RUN: Final = SpanType.ASSISTANT_RUN
+SPAN_TYPE_ROUTER_DECISION: Final = SpanType.ROUTER_DECISION
+SPAN_TYPE_MEMORY_SHORT_TERM_LOAD: Final = SpanType.MEMORY_SHORT_TERM_LOAD
+SPAN_TYPE_MEMORY_LONG_TERM_RETRIEVE: Final = SpanType.MEMORY_LONG_TERM_RETRIEVE
+SPAN_TYPE_MEMORY_LONG_TERM_WRITE: Final = SpanType.MEMORY_LONG_TERM_WRITE
+SPAN_TYPE_WORKING_MEMORY_UPDATE: Final = SpanType.WORKING_MEMORY_UPDATE
+SPAN_TYPE_CONTEXT_ASSEMBLE: Final = SpanType.CONTEXT_ASSEMBLE
+SPAN_TYPE_CONTEXT_FINAL_ASSEMBLE: Final = SpanType.CONTEXT_FINAL_ASSEMBLE
+SPAN_TYPE_CONTEXT_COMPRESS: Final = SpanType.CONTEXT_COMPRESS
+SPAN_TYPE_AGENT_RUN: Final = SpanType.AGENT_RUN
+SPAN_TYPE_PLANNER_DECISION: Final = SpanType.PLANNER_DECISION
+SPAN_TYPE_PLANNER_FALLBACK: Final = SpanType.PLANNER_FALLBACK
+SPAN_TYPE_TOOL_CALL: Final = SpanType.TOOL_CALL
+SPAN_TYPE_MCP_CALL: Final = SpanType.MCP_CALL
+SPAN_TYPE_LLM_CALL: Final = SpanType.LLM_CALL
+SPAN_TYPE_SECURITY_CHECK: Final = SpanType.SECURITY_CHECK
+SPAN_TYPE_EVAL_JUDGE: Final = SpanType.EVAL_JUDGE
+
+# 统一维护全部合法 span 类型，便于后续 schema、校验或 UI 复用。
+SPAN_TYPES: Final = tuple(SpanType)
 
 
 class TokenUsage(BaseModel):

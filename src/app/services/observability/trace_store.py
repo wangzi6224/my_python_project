@@ -8,7 +8,13 @@ from psycopg.types.json import Jsonb
 
 from src.app.db import get_connection
 from src.app.services.observability.redaction import redact_dict
-from src.app.services.observability.trace_schema import TraceSpan, TraceSpanCreate
+from src.app.services.observability.trace_schema import (
+    SPAN_TYPE_LLM_CALL,
+    SPAN_TYPE_MCP_CALL,
+    SPAN_TYPE_TOOL_CALL,
+    TraceSpan,
+    TraceSpanCreate,
+)
 
 
 def _normalize_span(row: dict[str, Any]) -> TraceSpan:
@@ -71,7 +77,7 @@ class TraceStore:
                         "conversation_id": payload.conversation_id,
                         "assistant_run_id": payload.assistant_run_id,
                         "agent_run_id": payload.agent_run_id,
-                        "span_type": payload.span_type,
+                        "span_type": payload.span_type.value,
                         "name": payload.name,
                         "input": Jsonb(
                             redact_dict(payload.input or {}, max_text_chars=2000)
@@ -156,9 +162,9 @@ class TraceStore:
 
         error_count = sum(1 for span in spans if span.status == "error")
 
-        llm_spans = [span for span in spans if span.span_type == "llm.call"]
-        tool_spans = [span for span in spans if span.span_type == "tool.call"]
-        mcp_spans = [span for span in spans if span.span_type == "mcp.call"]
+        llm_spans = [span for span in spans if span.span_type == SPAN_TYPE_LLM_CALL]
+        tool_spans = [span for span in spans if span.span_type == SPAN_TYPE_TOOL_CALL]
+        mcp_spans = [span for span in spans if span.span_type == SPAN_TYPE_MCP_CALL]
 
         total_tokens = 0
         estimated_cost = 0.0

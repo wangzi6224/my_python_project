@@ -7,6 +7,7 @@ from jsonschema import validate
 
 from src.app.services.agent.loop import AgentLoop
 from src.app.services.agent.state import AgentState
+from src.app.services.observability.trace_schema import SPAN_TYPE_TOOL_CALL
 
 
 class FakeSpan:
@@ -236,7 +237,7 @@ def test_agent_loop_records_tool_call_span() -> None:
 
     loop.run(state)
 
-    assert FakeTraceStore.created[0]["span_type"] == "tool.call"
+    assert FakeTraceStore.created[0]["span_type"] == SPAN_TYPE_TOOL_CALL
     assert FakeTraceStore.created[0]["parent_span_id"] == "agent-span-1"
     assert FakeTraceStore.finished[0]["status"] == "success"
 

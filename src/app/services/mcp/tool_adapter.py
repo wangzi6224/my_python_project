@@ -9,7 +9,10 @@ from src.app.services.mcp.client import McpClient
 from src.app.services.mcp.permission import McpPermission
 from src.app.services.mcp.schemas import McpServerConfig, McpToolSpec
 from src.app.services.observability.redaction import redact_dict
-from src.app.services.observability.trace_schema import TraceSpanCreate
+from src.app.services.observability.trace_schema import (
+    SPAN_TYPE_MCP_CALL,
+    TraceSpanCreate,
+)
 from src.app.services.observability.trace_store import TraceStore
 from src.app.services.tools.base import Tool
 from src.app.services.tools.result import tool_error, tool_success
@@ -204,7 +207,7 @@ class McpToolAdapter(Tool):
                 conversation_id=trace_context.get("conversation_id"),
                 assistant_run_id=trace_context.get("assistant_run_id"),
                 agent_run_id=trace_context.get("agent_run_id"),
-                span_type="mcp.call",
+                span_type=SPAN_TYPE_MCP_CALL,
                 name=self.spec.full_name,
                 input=redact_dict(
                     {

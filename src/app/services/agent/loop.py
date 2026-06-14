@@ -20,7 +20,10 @@ from src.app.services.assistant.event import (
     EVENT_TOOL_RESULT,
 )
 from src.app.services.observability.redaction import redact_dict
-from src.app.services.observability.trace_schema import TraceSpanCreate
+from src.app.services.observability.trace_schema import (
+    SPAN_TYPE_TOOL_CALL,
+    TraceSpanCreate,
+)
 from src.app.services.observability.trace_store import TraceStore
 from src.app.services.tools.registry import ToolRegistry
 from src.app.services.tools.safety import limit_tool_result
@@ -265,7 +268,7 @@ class AgentLoop:
                 conversation_id=state.conversation_id,
                 assistant_run_id=state.assistant_run_id,
                 agent_run_id=state.run_id,
-                span_type="tool.call",
+                span_type=SPAN_TYPE_TOOL_CALL,
                 name=tool_name,
                 input=redact_dict(
                     {

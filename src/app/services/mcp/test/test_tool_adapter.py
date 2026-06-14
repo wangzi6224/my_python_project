@@ -4,6 +4,7 @@ from typing import Any
 
 from src.app.services.mcp.schemas import McpServerConfig, McpToolCallResult, McpToolSpec
 from src.app.services.mcp.tool_adapter import McpToolAdapter
+from src.app.services.observability.trace_schema import SPAN_TYPE_MCP_CALL
 from src.app.services.tools.registry import ToolRegistry
 
 
@@ -117,7 +118,7 @@ def test_mcp_adapter_creates_success_span_without_raw_result() -> None:
     assert client.arguments == {"query": "bug"}
     assert audit_store.logs[0]["arguments"] == {"query": "bug"}
     assert audit_store.logs[0]["assistant_run_id"] == "assistant-run-1"
-    assert trace_store.created[0]["span_type"] == "mcp.call"
+    assert trace_store.created[0]["span_type"] == SPAN_TYPE_MCP_CALL
     assert trace_store.created[0]["parent_span_id"] == "tool-span-1"
     assert trace_store.created[0]["input"]["arguments"] == {"query": "bug"}
     assert "env" not in trace_store.created[0]["input"]

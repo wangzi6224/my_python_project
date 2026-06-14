@@ -31,7 +31,12 @@ from src.app.services.assistant.event import EVENT_AGENT_RUN_END, EVENT_AGENT_RU
 from src.app.services.llm.factory import get_llm_provider
 from src.app.services.observability.llm_observer import build_llm_span_metadata
 from src.app.services.observability.prompt_registry import get_prompt_version
-from src.app.services.observability.trace_schema import TraceSpanCreate
+from src.app.services.observability.trace_schema import (
+    SPAN_TYPE_AGENT_RUN,
+    SPAN_TYPE_CONTEXT_FINAL_ASSEMBLE,
+    SPAN_TYPE_LLM_CALL,
+    TraceSpanCreate,
+)
 from src.app.services.observability.trace_store import TraceStore
 from src.app.services.tools.registry import ToolRegistry
 from src.app.services.tools.list_docs import ListDocsTool
@@ -143,7 +148,7 @@ class AgentService:
                     conversation_id=conversation_id,
                     assistant_run_id=assistant_run_id,
                     agent_run_id=run_id,
-                    span_type="agent.run",
+                    span_type=SPAN_TYPE_AGENT_RUN,
                     name="agent_loop",
                     input={
                         "question": clean_question,
@@ -244,7 +249,7 @@ class AgentService:
                     conversation_id=conversation_id,
                     assistant_run_id=assistant_run_id,
                     agent_run_id=run_id,
-                    span_type="context.final_assemble",
+                    span_type=SPAN_TYPE_CONTEXT_FINAL_ASSEMBLE,
                     name="agent_final_context",
                     input={
                         "observation_count": len(state.observations),
@@ -303,7 +308,7 @@ class AgentService:
                     conversation_id=conversation_id,
                     assistant_run_id=assistant_run_id,
                     agent_run_id=run_id,
-                    span_type="llm.call",
+                    span_type=SPAN_TYPE_LLM_CALL,
                     name="agent_final_answer",
                     input={
                         "message_count": len(final_messages),

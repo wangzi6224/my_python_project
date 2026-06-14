@@ -335,12 +335,14 @@ class AssistantOrchestrator:
                     output={
                         "count": len(long_term_memory_items),
                         "latency_ms": long_term_memory.latency_ms,
-                        "memorys": [
+                        "memories": [
                             {
                                 "id": item.item.id,
                                 "workspace_id": item.item.workspace_id,
                                 "importance": item.item.importance,
                                 "confidence": item.item.confidence,
+                                "content": item.item.content,
+                                "score": item.score,
                             }
                             for item in long_term_memory_items
                         ],

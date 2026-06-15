@@ -102,9 +102,23 @@ def list_conversations() -> list[dict[str, Any]]:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT *
-                FROM conversations
-                ORDER BY updated_at DESC
+                SELECT
+                    conv.id,
+                    conv.summary,
+                    COALESCE(conv_states.current_goal, conv.title) AS title,
+                    conv.model,
+                    conv.provider,
+                    conv.status,
+
+                    conv.summarized_message_count,
+                    conv.summary_updated_at,
+
+                    conv.created_at,
+                    conv.updated_at
+                FROM conversations AS conv
+                JOIN conversation_states AS conv_states
+                    ON conv.id = conv_states.conversation_id
+                ORDER BY conv.updated_at DESC;
                 """)
             rows = cur.fetchall()
 

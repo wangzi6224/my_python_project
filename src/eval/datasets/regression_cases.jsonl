@@ -1,0 +1,2 @@
+{"id":"regression_chat_001","category":"regression","message":"你好，用一句话介绍 NexusAI","mode":"auto","expected":{"mode":"chat","max_latency_ms":15000},"options":{"enable_long_term_memory":false},"tags":["regression","chat"]}
+{"id":"regression_agent_001","category":"regression","message":"搜索知识库中和 Agent Loop 有关的内容并总结","mode":"auto","expected":{"mode":"agent","max_latency_ms":60000},"options":{"max_steps":3,"enable_long_term_memory":true},"tags":["regression","agent"]}

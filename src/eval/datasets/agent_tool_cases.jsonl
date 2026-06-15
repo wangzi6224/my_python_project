@@ -1,0 +1,2 @@
+{"id":"agent_tool_search_001","category":"agent_tool","message":"搜索知识库中和 embedding_status 有关的内容并总结","mode":"agent","expected":{"required_tools":["search_docs"],"answer_must_contain_any":["embedding_status","pending","completed"]},"options":{"max_steps":3,"top_k":5},"tags":["agent","search_docs"]}
+{"id":"agent_tool_list_001","category":"agent_tool","message":"列出当前知识库有哪些文档","mode":"agent","expected":{"required_tools":["list_docs"]},"options":{"max_steps":2},"tags":["agent","list_docs"]}

@@ -53,6 +53,12 @@ class AgentState(BaseModel):
     user_message_id: str
     # 用户问题
     question: str
+    # 用户原始问题，保留用于审计、最终回答和消息展示
+    original_question: str | None = None
+    # 改写后的规划/检索问题，仅用于辅助 planner 和工具检索
+    rewritten_question: str | None = None
+    # Query rewrite 执行结果和降级原因
+    query_rewrite: dict[str, Any] | None = None
     # 消息列表
     messages: list[dict[str, Any]]
     # 步骤列表

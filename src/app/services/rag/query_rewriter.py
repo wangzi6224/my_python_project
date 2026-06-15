@@ -14,6 +14,7 @@ class QueryRewriter:
         recent_messages: list[dict[str, Any]],
         current_question: str,
         model: str | None = None,
+        purpose: str = "rag_retrieval",
     ) -> dict[str, Any]:
         selected_model = resolve_llm_model(model=model)
         start = perf_counter()
@@ -22,6 +23,7 @@ class QueryRewriter:
             conversation_summary=conversation_summary,
             recent_messages=recent_messages,
             current_question=current_question,
+            purpose=purpose,
         )
 
         try:
@@ -60,12 +62,23 @@ class QueryRewriter:
         conversation_summary: str | None,
         recent_messages: list[dict[str, Any]],
         current_question: str,
+        purpose: str = "rag_retrieval",
     ) -> list[dict[str, str]]:
-        system_prompt = """
-        你是一个企业知识库 RAG 系统里的 Query Rewrite 模块。
+        role_description = (
+            "企业知识库 RAG 系统里的 Query Rewrite 模块"
+            if purpose == "rag_retrieval"
+            else "NexusAI Agent 的 Query Rewrite 模块"
+        )
+        task_description = (
+            "把用户当前问题改写成一个独立、完整、适合知识库检索的问题。"
+            if purpose == "rag_retrieval"
+            else "把用户当前问题改写成一个独立、完整、适合工具规划和知识库检索的问题。"
+        )
+        system_prompt = f"""
+        你是一个{role_description}。
 
         你的任务：
-        把用户当前问题改写成一个独立、完整、适合知识库检索的问题。
+        {task_description}
 
         严格要求：
         1. 不要回答问题。

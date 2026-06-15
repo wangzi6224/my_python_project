@@ -75,14 +75,12 @@ def _extract_first_document_id(result: dict[str, Any] | None) -> str | None:
 
 
 class RuleBasedPlanner:
-    """规则版 Agent 决策器。
-
-    Week 13 目标：让 Planner 能基于 Observation 继续决策。
-    Week 16 再升级为 LLM Planner。
-    """
+    """规则版 Agent 决策器。"""
 
     def plan(self, state: AgentState) -> dict[str, Any]:
         text = state.question.strip()
+        search_query = (state.rewritten_question or state.question).strip()
+        decision_text = f"{text}\n{search_query}"
 
         last_observation = _last_observation(state)
         if last_observation and not last_observation.success:
@@ -92,7 +90,8 @@ class RuleBasedPlanner:
             }
 
         if any(
-            keyword in text for keyword in ["有哪些文档", "文档列表", "知识库里有什么"]
+            keyword in decision_text
+            for keyword in ["有哪些文档", "文档列表", "知识库里有什么"]
         ):
             if not _has_called(state, "list_docs"):
                 return {
@@ -108,7 +107,7 @@ class RuleBasedPlanner:
             }
 
         need_search = any(
-            keyword in text
+            keyword in decision_text
             for keyword in [
                 "根据知识库",
                 "根据文档",
@@ -120,13 +119,13 @@ class RuleBasedPlanner:
         )
 
         need_full_doc = any(
-            keyword in text
+            keyword in decision_text
             for keyword in ["详细", "完整", "分析", "生成", "模板", "总结", "对比"]
         )
 
         if need_search:
             search_arguments = {
-                "query": text,
+                "query": search_query,
                 "top_k": state.top_k,
                 "score_threshold": state.score_threshold,
             }

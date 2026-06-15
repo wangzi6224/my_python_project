@@ -6,6 +6,8 @@ import pytest
 from jsonschema import validate
 
 from src.app.services.agent.loop import AgentLoop
+from src.app.services.agent.planner_prompt_builder import LLMPlannerPromptBuilder
+from src.app.services.agent.query_rewrite import should_rewrite_agent_query
 from src.app.services.agent.state import AgentState
 from src.app.services.observability.trace_schema import SPAN_TYPE_TOOL_CALL
 
@@ -161,6 +163,57 @@ def test_agent_loop_can_search_then_read_then_final() -> None:
     assert len(result.observations) == 2
     assert result.observations[0].tool_name == "search_docs"
     assert result.observations[1].tool_name == "read_doc"
+
+
+def test_rule_planner_uses_rewritten_question_for_search_query() -> None:
+    loop = AgentLoop(tool_registry=FakeRegistry(), planner_type="rule")  # type: ignore[arg-type]
+    state = build_state("继续", max_steps=1).model_copy(
+        update={
+            "rewritten_question": "根据知识库详细分析 Button 组件规范",
+            "query_rewrite": {
+                "original_query": "继续",
+                "rewritten_query": "根据知识库详细分析 Button 组件规范",
+                "rewrite_changed": True,
+            },
+        }
+    )
+
+    result = loop.run(state)
+
+    assert result.steps[0].tool_name == "search_docs"
+    assert result.steps[0].arguments["query"] == "根据知识库详细分析 Button 组件规范"
+
+
+def test_llm_planner_prompt_separates_original_and_rewritten_question() -> None:
+    state = build_state("继续", max_steps=1).model_copy(
+        update={
+            "original_question": "继续",
+            "rewritten_question": "根据知识库详细分析 Button 组件规范",
+        }
+    )
+
+    messages = LLMPlannerPromptBuilder().build_messages(state=state, tools=[])
+
+    assert "【用户原始问题】\n继续" in messages[1]["content"]
+    assert "【规划/检索问题】\n根据知识库详细分析 Button 组件规范" in messages[1]["content"]
+    assert "调用 search_docs 时，优先使用【规划/检索问题】作为 query" in messages[1]["content"]
+
+
+def test_should_rewrite_agent_query_only_for_context_dependent_followups() -> None:
+    recent_messages = [
+        {"role": "user", "content": "根据知识库查询 Button"},
+        {"role": "assistant", "content": "找到 Button 文档"},
+        {"role": "user", "content": "它有哪些限制"},
+    ]
+
+    assert should_rewrite_agent_query(
+        question="这个怎么改",
+        recent_messages=recent_messages,
+    )
+    assert not should_rewrite_agent_query(
+        question="根据知识库查询 Button 组件规范",
+        recent_messages=[{"role": "user", "content": "根据知识库查询 Button 组件规范"}],
+    )
 
 
 def test_agent_loop_respects_max_steps() -> None:

@@ -15,6 +15,7 @@ from src.app.config import (
     get_agent_planner_type,
     resolve_max_context_tokens,
     get_agent_max_steps,
+    is_agent_query_rewrite_enabled,
 )
 from src.app.conversation_store import (
     create_message,
@@ -26,6 +27,12 @@ from src.app.exceptions import ConversationError
 from src.app.services.agent.loop import AgentLoop
 from src.app.services.agent.planner_prompt_builder import LLM_PLANNER_PROMPT_VERSION
 from src.app.services.agent.prompt_builder import AgentPromptBuilder
+from src.app.services.agent.query_rewrite import (
+    count_user_messages,
+    normalize_query_rewrite_result,
+    should_rewrite_agent_query,
+    skipped_query_rewrite,
+)
 from src.app.services.agent.state import AgentState
 from src.app.services.assistant.event import EVENT_AGENT_RUN_END, EVENT_AGENT_RUN_START
 from src.app.services.llm.factory import get_llm_provider
@@ -35,9 +42,12 @@ from src.app.services.observability.trace_schema import (
     SPAN_TYPE_AGENT_RUN,
     SPAN_TYPE_CONTEXT_FINAL_ASSEMBLE,
     SPAN_TYPE_LLM_CALL,
+    SPAN_TYPE_QUERY_REWRITE,
     TraceSpanCreate,
 )
+from src.app.services.observability.span import trace_span
 from src.app.services.observability.trace_store import TraceStore
+from src.app.services.rag.query_rewriter import QueryRewriter
 from src.app.services.tools.registry import ToolRegistry
 from src.app.services.tools.list_docs import ListDocsTool
 from src.app.services.tools.search_docs import SearchDocsTool
@@ -53,6 +63,7 @@ class AgentService:
         self.llm_provider = get_llm_provider()
         self.prompt_builder = AgentPromptBuilder()
         self.planner_type = get_agent_planner_type()
+        self.query_rewriter = QueryRewriter()
 
         tool_registry = ToolRegistry()
         tools_list = (
@@ -119,6 +130,12 @@ class AgentService:
             },
         )
 
+        recent_messages = list_messages(conversation_id)[-10:]
+        rewrite_required = should_rewrite_agent_query(
+            question=clean_question,
+            recent_messages=recent_messages,
+        )
+
         run_start = perf_counter()
 
         agent_run = create_agent_run(
@@ -131,6 +148,10 @@ class AgentService:
             metadata={
                 "top_k": top_k,
                 "score_threshold": score_threshold,
+                "query_rewrite": {
+                    "enabled": is_agent_query_rewrite_enabled(),
+                    "should_rewrite": rewrite_required,
+                },
             },
         )
 
@@ -152,6 +173,7 @@ class AgentService:
                     name="agent_loop",
                     input={
                         "question": clean_question,
+                        "should_rewrite_query": rewrite_required,
                         "max_steps": resolved_max_steps,
                         "enable_mcp_tools": enable_mcp_tools,
                     },
@@ -162,6 +184,63 @@ class AgentService:
                 )
             )
 
+        rewrite_input = {
+            "question": clean_question,
+            "recent_message_count": len(recent_messages),
+            "recent_user_message_count": count_user_messages(recent_messages),
+            "should_rewrite": rewrite_required,
+            "enabled": is_agent_query_rewrite_enabled(),
+        }
+
+        def run_query_rewrite() -> dict[str, Any]:
+            if not rewrite_required:
+                return skipped_query_rewrite(
+                    clean_question,
+                    "SKIPPED_BY_HEURISTIC",
+                )
+
+            return self.query_rewriter.rewrite(
+                conversation_summary=conversation.get("summary"),
+                recent_messages=recent_messages,
+                current_question=clean_question,
+                model=selected_model,
+                purpose="agent_planning",
+            )
+
+        if trace_id and assistant_run_id:
+            with trace_span(
+                trace_id=trace_id,
+                run_id=assistant_run_id,
+                parent_span_id=agent_span.id if agent_span else parent_span_id,
+                conversation_id=conversation_id,
+                assistant_run_id=assistant_run_id,
+                agent_run_id=run_id,
+                span_type=SPAN_TYPE_QUERY_REWRITE,
+                name="agent_query_rewrite",
+                input=rewrite_input,
+                metadata={
+                    "model": selected_model if rewrite_required else None,
+                    "purpose": "agent_planning",
+                },
+                store=trace_store,
+            ) as rewrite_span:
+                rewrite_result = run_query_rewrite()
+                rewrite_span.finish(
+                    output=rewrite_result,
+                    metadata={
+                        "rewrite_changed": rewrite_result.get("rewrite_changed"),
+                        "fallback_reason": rewrite_result.get("fallback_reason"),
+                        "latency_ms": rewrite_result.get("latency_ms"),
+                    },
+                )
+        else:
+            rewrite_result = run_query_rewrite()
+
+        rewritten_question, rewrite_result = normalize_query_rewrite_result(
+            question=clean_question,
+            rewrite_result=rewrite_result,
+        )
+
         create_agent_event(
             run_id=run_id,
             event_type=EVENT_AGENT_RUN_START,
@@ -169,11 +248,12 @@ class AgentService:
                 "conversation_id": conversation_id,
                 "user_message_id": user_message["id"],
                 "question": clean_question,
+                "rewritten_question": rewritten_question,
+                "query_rewrite": rewrite_result,
                 "model": selected_model,
             },
         )
 
-        recent_messages = list_messages(conversation_id)[-10:]
         serialized_memory_context = [
             item.model_dump(mode="json") for item in (memory_context or [])
         ]
@@ -186,9 +266,15 @@ class AgentService:
             else []
         )
         working_memory_metadata = (
-            {"conversation_state": conversation_state}
+            {
+                "conversation_state": conversation_state,
+                "query_rewrite": rewrite_result,
+            }
             if enable_working_memory
-            else {"conversation_state": None}
+            else {
+                "conversation_state": None,
+                "query_rewrite": rewrite_result,
+            }
         )
 
         working_memory = WorkingMemory(
@@ -204,6 +290,9 @@ class AgentService:
             conversation_id=conversation_id,
             user_message_id=user_message["id"],
             question=clean_question,
+            original_question=clean_question,
+            rewritten_question=rewritten_question,
+            query_rewrite=rewrite_result,
             messages=recent_messages,
             max_steps=resolved_max_steps,
             model=selected_model,
@@ -410,6 +499,7 @@ class AgentService:
                     "finish_reason": state.finish_reason,
                     "step_count": len(state.steps),
                     "tool_call_count": len(tool_calls),
+                    "query_rewrite": rewrite_result,
                     "used_tools": [
                         step.tool_name for step in state.steps if step.tool_name
                     ],
@@ -418,6 +508,7 @@ class AgentService:
 
         trace = {
             "run_id": run_id,
+            "query_rewrite": rewrite_result,
             "max_steps": resolved_max_steps,
             "loop_step_count": len(state.steps),
             "tool_call_count": len(tool_calls),
@@ -484,6 +575,7 @@ class AgentService:
             "tool_calls": tool_calls,
             "context_package": context_package.model_dump(mode="json"),
             "trace": trace,
+            "query_rewrite": rewrite_result,
         }
 
     def _build_tool_registry(self, *, enable_mcp_tools: bool) -> ToolRegistry:

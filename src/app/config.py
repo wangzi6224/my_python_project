@@ -136,6 +136,15 @@ class Settings(BaseSettings):
     agent_planner_timeout_seconds: int = Field(
         default=8, alias="AGENT_PLANNER_TIMEOUT_SECONDS"
     )
+    agent_query_rewrite_enabled: bool = Field(
+        default=True, alias="AGENT_QUERY_REWRITE_ENABLED"
+    )
+    agent_query_rewrite_min_history: int = Field(
+        default=2, ge=0, alias="AGENT_QUERY_REWRITE_MIN_HISTORY"
+    )
+    agent_query_rewrite_short_query_chars: int = Field(
+        default=12, ge=1, alias="AGENT_QUERY_REWRITE_SHORT_QUERY_CHARS"
+    )
 
     llm_router_model: str = Field(
         default="deepseek-v4-flash",
@@ -547,6 +556,18 @@ def get_agent_planner_temperature() -> float:
 
 def get_agent_planner_timeout_seconds() -> int:
     return get_settings().agent_planner_timeout_seconds
+
+
+def is_agent_query_rewrite_enabled() -> bool:
+    return get_settings().agent_query_rewrite_enabled
+
+
+def get_agent_query_rewrite_min_history() -> int:
+    return get_settings().agent_query_rewrite_min_history
+
+
+def get_agent_query_rewrite_short_query_chars() -> int:
+    return get_settings().agent_query_rewrite_short_query_chars
 
 
 def get_llm_router_model() -> str:

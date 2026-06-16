@@ -59,7 +59,27 @@
 
 .footer {
   width: 100%;
-  flex-wrap: wrap;
+}
+
+.footerLabel {
+  color: var(--text-dim);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.advancedOptions {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+
+  :global(.ant-checkbox-wrapper) {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+
+  :global(.ant-checkbox-disabled + span) {
+    color: var(--text-dim);
+  }
 }
 
 .modeSegmented {

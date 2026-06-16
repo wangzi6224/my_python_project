@@ -43,6 +43,12 @@ EVENT_CONTEXT_ASSEMBLED: Final = (
     "context_assembled"  # 上下文组装完成，包含最终进入模型的上下文摘要信息。
 )
 
+EVENT_MULTI_AGENT_RUN_START = "multi_agent_run_start"
+EVENT_MULTI_AGENT_ROLE_START = "multi_agent_role_start"
+EVENT_MULTI_AGENT_ROLE_END = "multi_agent_role_end"
+EVENT_MULTI_AGENT_HANDOFF = "multi_agent_handoff"
+EVENT_MULTI_AGENT_REVIEW = "multi_agent_review"
+
 AssistantStreamEvent = Literal[
     "assistant_start",
     "route_decision",
@@ -58,6 +64,11 @@ AssistantStreamEvent = Literal[
     "assistant_end",
     "error",
     "done",
+    "multi_agent_run_start",
+    "multi_agent_role_start",
+    "multi_agent_role_end",
+    "multi_agent_handoff",
+    "multi_agent_review",
 ]
 
 ConversationStreamEvent = Literal[
@@ -96,6 +107,11 @@ ASSISTANT_STREAM_EVENTS: tuple[AssistantStreamEvent, ...] = (
     EVENT_ASSISTANT_END,
     EVENT_ERROR,
     EVENT_DONE,
+    EVENT_MULTI_AGENT_RUN_START,
+    EVENT_MULTI_AGENT_ROLE_START,
+    EVENT_MULTI_AGENT_ROLE_END,
+    EVENT_MULTI_AGENT_HANDOFF,
+    EVENT_MULTI_AGENT_REVIEW,
 )
 
 CONVERSATION_STREAM_EVENTS: tuple[ConversationStreamEvent, ...] = (

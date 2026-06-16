@@ -1,5 +1,6 @@
 import {
   AssistantMode,
+  AssistantRequestOptions,
   AssistantSourceItem,
   AssistantStreamChunk,
   AssistantToolCallEvent,
@@ -7,6 +8,7 @@ import {
   MessageItem,
   ModelsResponse,
   TraceSummary,
+  MultiAgentTrace,
   createConversation as apiCreateConversation,
   deleteConversation as apiDeleteConversation,
   selectModel as apiSelectModel,
@@ -70,6 +72,7 @@ export interface ChatMessage {
   toolCalls?: AssistantToolCallEvent[];
   sources?: AssistantSourceItem[];
   trace?: Record<string, unknown>;
+  multiAgentTrace?: MultiAgentTrace;
   traceId?: string;
   traceSummary?: TraceSummary;
   traceEvents?: AssistantTraceEventItem[];
@@ -95,7 +98,7 @@ interface ChatContextType {
   conversationsError: string | null;
   sendMessage: (
     content: string,
-    options?: { mode?: AssistantMode },
+    options?: { mode?: AssistantMode; assistantOptions?: AssistantRequestOptions },
   ) => Promise<void>;
   loadConversations: () => Promise<void>;
   createConversation: (title?: string) => Promise<ConversationItem | null>;
@@ -159,11 +162,20 @@ function toChatMessage(item: MessageItem): ChatMessage | null {
 
   // 安全读取 trace（必须是对象且非 null）
   const rawTrace = metadata.trace;
+  const rawMultiAgent = metadata.multi_agent;
+  const multiAgentTrace: MultiAgentTrace | undefined =
+    rawMultiAgent !== null &&
+    typeof rawMultiAgent === 'object' &&
+    !Array.isArray(rawMultiAgent)
+      ? (rawMultiAgent as MultiAgentTrace)
+      : undefined;
   const trace: Record<string, unknown> | undefined =
     rawTrace !== null &&
     typeof rawTrace === 'object' &&
     !Array.isArray(rawTrace)
       ? (rawTrace as Record<string, unknown>)
+      : multiAgentTrace
+      ? { multi_agent: multiAgentTrace }
       : undefined;
   const assistantRunId =
     typeof metadata.assistant_run_id === 'string'
@@ -232,6 +244,7 @@ function toChatMessage(item: MessageItem): ChatMessage | null {
     toolCalls,
     sources,
     trace,
+    multiAgentTrace,
     traceId,
     traceSummary,
   };
@@ -648,9 +661,26 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   );
 
   const sendMessage = useCallback(
-    async (content: string, options?: { mode?: AssistantMode }) => {
+    async (
+      content: string,
+      options?: {
+        mode?: AssistantMode;
+        assistantOptions?: AssistantRequestOptions;
+      },
+    ) => {
       const trimmedContent = content.trim();
       const requestedMode = options?.mode || 'auto';
+      const requestOptions = options?.assistantOptions;
+      const streamOptions: AssistantRequestOptions | undefined =
+        requestOptions ||
+        (requestedMode === 'mcp'
+          ? {
+              enable_mcp_tools: true,
+              enable_tools: true,
+              enable_working_memory: true,
+              enable_long_term_memory: true,
+            }
+          : undefined);
 
       if (!trimmedContent || loading) return;
 
@@ -694,15 +724,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             mode: requestedMode,
             provider: currentProvider || null,
             model: currentModel || null,
-            options:
-              requestedMode === 'mcp'
-                ? {
-                    enable_mcp_tools: true,
-                    enable_tools: true,
-                    enable_working_memory: true,
-                    enable_long_term_memory: true,
-                  }
-                : undefined,
+            options: streamOptions,
           },
           (chunk: AssistantStreamChunk) => {
             if (chunk.event === 'assistant_start') {
@@ -753,6 +775,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                 arguments: chunk.arguments,
                 reason: chunk.reason,
                 step: chunk.step,
+                source: chunk.source,
+                role: chunk.role,
+                multi_agent_run_id: chunk.multi_agent_run_id,
+                metadata: chunk.metadata,
               };
 
               setMessages((prev) =>
@@ -790,6 +816,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                                   latency_ms: chunk.latency_ms,
                                   error_code: chunk.error_code,
                                   error_message: chunk.error_message,
+                                  source: chunk.source || item.source,
+                                  role: chunk.role || item.role,
+                                  multi_agent_run_id:
+                                    chunk.multi_agent_run_id ||
+                                    item.multi_agent_run_id,
+                                  metadata: chunk.metadata || item.metadata,
                                 }
                               : item,
                           ),
@@ -849,6 +881,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
                           sources: Array.isArray(chunk.sources)
                             ? chunk.sources
                             : m.sources,
+                          multiAgentTrace:
+                            chunk.multi_agent ||
+                            (toRecord(chunk.trace)?.multi_agent as
+                              | MultiAgentTrace
+                              | undefined) ||
+                            m.multiAgentTrace,
                           trace:
                             chunk.trace !== null &&
                             typeof chunk.trace === 'object' &&

@@ -18,6 +18,8 @@ ContextItemType = Literal[
     "read_document",  # 阅读到的文档内容，通常来自文档阅读工具。优先级中等，允许压缩。
     "tool_observation",  # 工具调用结果，通常来自外部工具调用。优先级较低，允许压缩。
     "output_requirement",  # 输出要求，通常由系统自动生成，或由开发者预设。优先级较低，允许压缩。
+    "multi_agent_artifact",
+    "multi_agent_handoff",
 ]
 
 ContextPlacement = Literal[
@@ -34,6 +36,7 @@ ContextSource = Literal[
     "working_memory",
     "agent_tool",
     "assistant_runtime",
+    "multi_agent",
 ]
 
 
@@ -111,6 +114,8 @@ class ContextBuildRequest(BaseModel):
     working_memory: dict[str, Any] | None = None
     tool_observations: list[dict[str, Any]] = Field(default_factory=list)
     tool_steps: list[dict[str, Any]] = Field(default_factory=list)
+    multi_agent_artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    multi_agent_handoffs: list[dict[str, Any]] = Field(default_factory=list)
 
     output_requirement: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

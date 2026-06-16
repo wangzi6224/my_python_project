@@ -67,6 +67,8 @@ from src.app.services.observability.trace_schema import (
     TraceSpanCreate,
 )
 from src.app.services.observability.trace_store import TraceStore
+from src.app.services.multi_agent.service import MultiAgentService
+from src.app.services.multi_agent.schemas import MultiAgentConfig
 
 logger = get_logger()
 
@@ -95,6 +97,8 @@ class AssistantOrchestrator:
         self.long_term_retriever = LongTermMemoryRetriever()
         self.long_term_writer = LongTermMemoryWriter()
         self.context_assembler = ContextAssembler()
+        self.agent_service = AgentService()
+        self.multi_agent_service = MultiAgentService()
 
     def stream(
         self,
@@ -901,31 +905,70 @@ class AssistantOrchestrator:
     ) -> Iterable[str]:
         # 当前 AgentService.chat 是同步执行。
         agent_start = perf_counter()
-        result = self.agent_service.chat(
-            conversation_id=conversation_id,
-            question=clean_message,
-            top_k=request.options.top_k,
-            score_threshold=request.options.score_threshold,
-            max_steps=request.options.max_steps,
-            model=selected_model,
-            enable_working_memory=request.options.enable_working_memory,
-            enable_mcp_tools=request.options.enable_mcp_tools,
-            trace_id=trace_id,
-            parent_span_id=root_span_id,
-            assistant_run_id=assistant_run_id,
-            max_context_tokens=resolve_max_context_tokens(
-                selected_model,
-                request.options.max_context_tokens,
-            ),
-            memory_context=(
-                long_term_memory_items if request.options.enable_working_memory else []
-            ),
-            conversation_state=(
-                short_term_memory.get("state")
-                if request.options.enable_working_memory and short_term_memory
-                else None
-            ),
-        )
+        if request.options.enable_multi_agent:
+            result = self.multi_agent_service.chat(
+                conversation_id=conversation_id,
+                question=clean_message,
+                top_k=request.options.top_k,
+                score_threshold=request.options.score_threshold,
+                max_steps=request.options.max_steps,
+                model=selected_model,
+                enable_mcp_tools=request.options.enable_mcp_tools,
+                trace_id=trace_id,
+                parent_span_id=root_span_id,
+                assistant_run_id=assistant_run_id,
+                max_context_tokens=resolve_max_context_tokens(
+                    selected_model,
+                    request.options.max_context_tokens,
+                ),
+                memory_context=(
+                    long_term_memory_items
+                    if request.options.enable_working_memory
+                    else []
+                ),
+                conversation_state=(
+                    short_term_memory.get("state")
+                    if request.options.enable_working_memory and short_term_memory
+                    else None
+                ),
+                config=MultiAgentConfig(
+                    enabled=True,
+                    max_rounds=request.options.multi_agent_max_rounds,
+                    max_role_steps=request.options.max_steps,
+                    enable_review=request.options.enable_multi_agent_review,
+                    enable_mcp_tools=request.options.enable_mcp_tools,
+                    enable_graph_rag=request.options.enable_graph_rag,
+                    model=selected_model,
+                ),
+            )
+        else:
+            result = self.agent_service.chat(
+                conversation_id=conversation_id,
+                question=clean_message,
+                top_k=request.options.top_k,
+                score_threshold=request.options.score_threshold,
+                max_steps=request.options.max_steps,
+                model=selected_model,
+                enable_working_memory=request.options.enable_working_memory,
+                enable_mcp_tools=request.options.enable_mcp_tools,
+                trace_id=trace_id,
+                parent_span_id=root_span_id,
+                assistant_run_id=assistant_run_id,
+                max_context_tokens=resolve_max_context_tokens(
+                    selected_model,
+                    request.options.max_context_tokens,
+                ),
+                memory_context=(
+                    long_term_memory_items
+                    if request.options.enable_working_memory
+                    else []
+                ),
+                conversation_state=(
+                    short_term_memory.get("state")
+                    if request.options.enable_working_memory and short_term_memory
+                    else None
+                ),
+            )
         agent_ms = int((perf_counter() - agent_start) * 1000)
 
         tool_calls: list[dict[str, Any]] = result.get("tool_calls", [])
@@ -999,6 +1042,10 @@ class AssistantOrchestrator:
                     "arguments": tool_call.get("arguments") or {},
                     "reason": tool_call.get("reason"),
                     "step": tool_call.get("step"),
+                    "source": tool_call.get("source"),
+                    "role": tool_call.get("role"),
+                    "multi_agent_run_id": tool_call.get("multi_agent_run_id"),
+                    "metadata": tool_call.get("metadata") or {},
                 },
             )
             yield sse_event(
@@ -1010,6 +1057,10 @@ class AssistantOrchestrator:
                     "step": tool_call.get("step"),
                     "error_code": tool_call.get("error_code"),
                     "error_message": tool_call.get("error_message"),
+                    "source": tool_call.get("source"),
+                    "role": tool_call.get("role"),
+                    "multi_agent_run_id": tool_call.get("multi_agent_run_id"),
+                    "metadata": tool_call.get("metadata") or {},
                 },
             )
 
@@ -1037,6 +1088,7 @@ class AssistantOrchestrator:
             },
             "context": trace.get("context"),
             "mcp": trace.get("mcp"),
+            "multi_agent": trace.get("multi_agent"),
             "memory": {
                 "short_term": self._build_short_term_memory_trace(
                     enabled=request.options.enable_short_term_memory,

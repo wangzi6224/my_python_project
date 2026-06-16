@@ -39,6 +39,13 @@ class AssistantOptions(BaseModel):
     long_term_memory_min_score: float = Field(default=0.25, ge=0, le=1)
     enable_long_term_memory_write: bool = True
 
+    enable_multi_agent: bool = False
+    multi_agent_max_rounds: int = Field(default=10, ge=1, le=20)
+    enable_multi_agent_review: bool = True
+    enable_multi_agent_trace: bool = True
+
+    enable_graph_rag: bool = False
+
 
 class AssistantStreamRequest(BaseModel):
     message: str = Field(..., min_length=1, description="用户当前输入")

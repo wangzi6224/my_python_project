@@ -245,6 +245,65 @@ class ContextAssembler:
                 )
             )
 
+        for artifact in request.multi_agent_artifacts:
+            role = artifact.get("role")
+            artifact_type = artifact.get("artifact_type")
+            content = str(artifact.get("content") or "").strip()
+            if not content:
+                continue
+
+            items.append(
+                self._item(
+                    type="multi_agent_artifact",
+                    source="multi_agent",
+                    placement="user_data",
+                    content=(
+                        f"Multi-Agent 角色产物：\n"
+                        f"- role：{role}\n"
+                        f"- artifact_type：{artifact_type}\n"
+                        f"- title：{artifact.get('title')}\n"
+                        f"- confidence：{artifact.get('confidence')}\n\n"
+                        f"{content}"
+                    ),
+                    priority=88 if role == "review" else 84,
+                    score=float(artifact.get("confidence") or 0.7),
+                    source_id=artifact.get("id"),
+                    metadata={
+                        "role": role,
+                        "artifact_type": artifact_type,
+                        "confidence": artifact.get("confidence"),
+                    },
+                )
+            )
+
+        for handoff in request.multi_agent_handoffs:
+            summary = str(handoff.get("summary") or "").strip()
+            if not summary:
+                continue
+
+            items.append(
+                self._item(
+                    type="multi_agent_handoff",
+                    source="multi_agent",
+                    placement="user_data",
+                    content=(
+                        f"Multi-Agent Handoff：\n"
+                        f"- from：{handoff.get('from_role')}\n"
+                        f"- to：{handoff.get('to_role')}\n"
+                        f"- task_id：{handoff.get('task_id')}\n"
+                        f"- confidence：{handoff.get('confidence')}\n\n"
+                        f"{summary}"
+                    ),
+                    priority=76,
+                    score=float(handoff.get("confidence") or 0.7),
+                    source_id=handoff.get("id"),
+                    metadata={
+                        "from_role": handoff.get("from_role"),
+                        "to_role": handoff.get("to_role"),
+                    },
+                )
+            )
+
         return items
 
     def _item(

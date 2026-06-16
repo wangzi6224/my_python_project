@@ -19,6 +19,8 @@ def evaluate_case(case: EvalCase, output: AssistantEvalOutput) -> EvalCaseResult
         return evaluate_mcp_tool_case(case, output)
     if case.category == "security":
         return evaluate_security_case(case, output)
+    if case.category == "multi_agent":
+        return evaluate_multi_agent_case(case, output)
     return evaluate_regression_case(case, output)
 
 
@@ -325,4 +327,67 @@ def _result(
         output=output,
         expected=case.expected,
         tags=case.tags,
+    )
+
+
+def evaluate_multi_agent_case(
+    case: EvalCase, output: AssistantEvalOutput
+) -> EvalCaseResult:
+    expected = case.expected
+    multi_agent = output.multi_agent or ((output.trace or {}).get("multi_agent") or {})
+
+    roles_used = multi_agent.get("roles_used") or []
+    artifacts = multi_agent.get("artifacts") or []
+    handoffs = multi_agent.get("handoffs") or []
+    review_decision = multi_agent.get("review_decision")
+
+    reasons: list[str] = []
+
+    if expected.get("should_use_multi_agent", True) and not multi_agent.get("enabled"):
+        reasons.append(
+            "expected multi-agent enabled, but trace.multi_agent.enabled is false"
+        )
+
+    for role in expected.get("required_roles") or []:
+        if role not in roles_used:
+            reasons.append(f"required role missing: {role}")
+
+    min_artifact_count = int(expected.get("min_artifact_count") or 0)
+    if len(artifacts) < min_artifact_count:
+        reasons.append(
+            f"artifact count too small: expected >= {min_artifact_count}, actual={len(artifacts)}"
+        )
+
+    min_handoff_count = int(expected.get("min_handoff_count") or 0)
+    if len(handoffs) < min_handoff_count:
+        reasons.append(
+            f"handoff count too small: expected >= {min_handoff_count}, actual={len(handoffs)}"
+        )
+
+    expected_review = expected.get("review_decision")
+    if expected_review and review_decision != expected_review:
+        reasons.append(
+            f"review decision mismatch: expected={expected_review}, actual={review_decision}"
+        )
+
+    if expected.get("forbid_graph_rag"):
+        used_tools = _used_tool_names(output)
+        for tool in used_tools:
+            if tool in {"search_graph", "inspect_entity_graph"}:
+                reasons.append(f"GraphRAG tool should not be used this week: {tool}")
+
+    passed = not reasons and output.error is None
+
+    return _result(
+        case,
+        output,
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        metrics={
+            "roles_used": roles_used,
+            "artifact_count": len(artifacts),
+            "handoff_count": len(handoffs),
+            "review_decision": review_decision,
+        },
+        reasons=reasons,
     )

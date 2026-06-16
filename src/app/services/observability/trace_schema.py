@@ -37,6 +37,11 @@ class SpanType(StrEnum):
     LLM_CALL = "llm.call"
     SECURITY_CHECK = "security.check"
     EVAL_JUDGE = "eval.judge"
+    MULTI_AGENT_RUN = "multi_agent.run"
+    MULTI_AGENT_SUPERVISOR = "multi_agent.supervisor"
+    MULTI_AGENT_ROLE = "multi_agent.role"
+    MULTI_AGENT_HANDOFF = "multi_agent.handoff"
+    MULTI_AGENT_REVIEW = "multi_agent.review"
 
 
 # 对外导出的常量别名，业务代码统一引用这些名称。
@@ -58,6 +63,11 @@ SPAN_TYPE_MCP_CALL: Final = SpanType.MCP_CALL
 SPAN_TYPE_LLM_CALL: Final = SpanType.LLM_CALL
 SPAN_TYPE_SECURITY_CHECK: Final = SpanType.SECURITY_CHECK
 SPAN_TYPE_EVAL_JUDGE: Final = SpanType.EVAL_JUDGE
+SPAN_TYPE_MULTI_AGENT_RUN: Final = SpanType.MULTI_AGENT_RUN
+SPAN_TYPE_MULTI_AGENT_SUPERVISOR: Final = SpanType.MULTI_AGENT_SUPERVISOR
+SPAN_TYPE_MULTI_AGENT_ROLE: Final = SpanType.MULTI_AGENT_ROLE
+SPAN_TYPE_MULTI_AGENT_HANDOFF: Final = SpanType.MULTI_AGENT_HANDOFF
+SPAN_TYPE_MULTI_AGENT_REVIEW: Final = SpanType.MULTI_AGENT_REVIEW
 
 # 统一维护全部合法 span 类型，便于后续 schema、校验或 UI 复用。
 SPAN_TYPES: Final = tuple(SpanType)

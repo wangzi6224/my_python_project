@@ -52,6 +52,7 @@ class AssistantEvalClient:
         if output.assistant_run_id:
             run_detail = self.get_assistant_run(output.assistant_run_id)
             trace = run_detail.get("trace") if isinstance(run_detail, dict) else None
+            output.multi_agent = (payload.get("trace") or {}).get("multi_agent") or None
             if trace and output.trace is None:
                 output.trace = trace
 

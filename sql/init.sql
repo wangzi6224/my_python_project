@@ -455,3 +455,88 @@ ON trace_spans(span_type);
 
 CREATE INDEX IF NOT EXISTS idx_trace_spans_status
 ON trace_spans(status);
+
+
+CREATE TABLE IF NOT EXISTS multi_agent_runs (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    assistant_run_id TEXT,
+    user_message_id TEXT,
+    assistant_message_id TEXT,
+    status TEXT NOT NULL,
+    input TEXT NOT NULL,
+    final_answer TEXT,
+    supervisor_plan JSONB NOT NULL DEFAULT '{}'::jsonb,
+    enabled_roles JSONB NOT NULL DEFAULT '[]'::jsonb,
+    finish_reason TEXT,
+    model TEXT,
+    provider TEXT,
+    latency_ms INTEGER,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_runs_conversation
+ON multi_agent_runs(conversation_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_runs_assistant_run
+ON multi_agent_runs(assistant_run_id);
+
+CREATE TABLE IF NOT EXISTS multi_agent_role_runs (
+    id TEXT PRIMARY KEY,
+    multi_agent_run_id TEXT NOT NULL REFERENCES multi_agent_runs(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    status TEXT NOT NULL,
+    input JSONB NOT NULL DEFAULT '{}'::jsonb,
+    output JSONB,
+    artifact_id TEXT,
+    error_code TEXT,
+    error_message TEXT,
+    latency_ms INTEGER,
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_role_runs_run
+ON multi_agent_role_runs(multi_agent_run_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_role_runs_role
+ON multi_agent_role_runs(role, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS multi_agent_handoffs (
+    id TEXT PRIMARY KEY,
+    multi_agent_run_id TEXT NOT NULL REFERENCES multi_agent_runs(id) ON DELETE CASCADE,
+    from_role TEXT NOT NULL,
+    to_role TEXT NOT NULL,
+    task_id TEXT,
+    summary TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    confidence NUMERIC NOT NULL DEFAULT 0.5,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_handoffs_run
+ON multi_agent_handoffs(multi_agent_run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS multi_agent_artifacts (
+    id TEXT PRIMARY KEY,
+    multi_agent_run_id TEXT NOT NULL REFERENCES multi_agent_runs(id) ON DELETE CASCADE,
+    role TEXT NOT NULL,
+    artifact_type TEXT NOT NULL,
+    title TEXT,
+    content TEXT NOT NULL,
+    data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_refs JSONB NOT NULL DEFAULT '[]'::jsonb,
+    confidence NUMERIC NOT NULL DEFAULT 0.5,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_artifacts_run
+ON multi_agent_artifacts(multi_agent_run_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_artifacts_role
+ON multi_agent_artifacts(role, created_at DESC);

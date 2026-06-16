@@ -11,6 +11,7 @@ EvalCategory = Literal[
     "mcp_tool",
     "security",
     "regression",
+    "multi_agent",
 ]
 
 
@@ -57,7 +58,7 @@ class AssistantEvalOutput(BaseModel):
     context: dict[str, Any] | None = None
     trace: dict[str, Any] | None = None
     trace_summary: dict[str, Any] | None = None
-
+    multi_agent: dict[str, Any] | None = None
     events: list[dict[str, Any]] = Field(default_factory=list)
     latency_ms: int | None = None
     error: dict[str, Any] | None = None

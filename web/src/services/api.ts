@@ -99,16 +99,23 @@ export interface AssistantStreamRequest {
   mode?: AssistantMode;
   model?: string | null;
   provider?: string | null;
-  options?: {
-    top_k?: number;
-    score_threshold?: number;
-    max_steps?: number;
-    enable_tools?: boolean;
-    enable_rag_tools?: boolean;
-    enable_mcp_tools?: boolean;
-    enable_working_memory?: boolean;
-    enable_long_term_memory?: boolean;
-  };
+  options?: AssistantRequestOptions;
+}
+
+export interface AssistantRequestOptions {
+  top_k?: number;
+  score_threshold?: number;
+  max_steps?: number;
+  enable_tools?: boolean;
+  enable_rag_tools?: boolean;
+  enable_mcp_tools?: boolean;
+  enable_context_debug?: boolean;
+  enable_working_memory?: boolean;
+  enable_working_memory_trace?: boolean;
+  enable_long_term_memory?: boolean;
+  enable_multi_agent?: boolean;
+  enable_multi_agent_review?: boolean;
+  enable_multi_agent_trace?: boolean;
 }
 
 export interface SendMessageResponse {
@@ -169,6 +176,9 @@ export interface AssistantToolCallEvent {
   source?: 'internal' | 'mcp' | string;
   server_name?: string | null;
   risk_level?: 'low' | 'medium' | 'high' | string | null;
+  role?: string | null;
+  multi_agent_run_id?: string | null;
+  metadata?: Record<string, unknown>;
   result?: Record<string, unknown>;
 }
 
@@ -276,6 +286,66 @@ export interface TraceDetailResponse {
   spans: TraceSpan[];
 }
 
+export interface MultiAgentTrace {
+  enabled: boolean;
+  run_id?: string;
+  roles_used: string[];
+  artifact_count: number;
+  handoff_count: number;
+  review_decision?: string;
+  role_runs?: Array<{
+    role: string;
+    status: string;
+    latency_ms?: number;
+    error_code?: string | null;
+    error_message?: string | null;
+    artifact?: {
+      id: string;
+      role: string;
+      artifact_type: string;
+      title: string;
+      confidence?: number;
+      content?: string;
+      data?: Record<string, unknown>;
+      source_refs?: Array<Record<string, unknown>>;
+      metadata?: Record<string, unknown>;
+    } | null;
+    trace?: Record<string, unknown>;
+    tool_calls?: AssistantToolCallEvent[];
+    handoffs?: {
+      incoming?: Array<{
+        id: string;
+        from_role: string;
+        to_role: string;
+        summary: string;
+        confidence?: number;
+      }>;
+      outgoing?: Array<{
+        id: string;
+        from_role: string;
+        to_role: string;
+        summary: string;
+        confidence?: number;
+      }>;
+    };
+  }>;
+  artifacts: Array<{
+    id: string;
+    role: string;
+    artifact_type: string;
+    title: string;
+    confidence?: number;
+    content?: string;
+  }>;
+  handoffs: Array<{
+    id: string;
+    from_role: string;
+    to_role: string;
+    summary: string;
+    confidence?: number;
+  }>;
+}
+
 export interface AssistantStreamChunk {
   event: AssistantStreamEvent;
   delta?: string;
@@ -293,6 +363,7 @@ export interface AssistantStreamChunk {
   tool_calls?: AssistantToolCallEvent[];
   sources?: AssistantSourceItem[];
   trace?: Record<string, unknown>;
+  multi_agent?: MultiAgentTrace;
   trace_id?: string;
   trace_summary?: TraceSummary;
   context?: ContextTrace;
@@ -300,6 +371,10 @@ export interface AssistantStreamChunk {
   arguments?: Record<string, unknown>;
   step?: number;
   success?: boolean;
+  source?: string;
+  role?: string | null;
+  multi_agent_run_id?: string | null;
+  metadata?: Record<string, unknown>;
   error_code?: string | null;
   error_message?: string | null;
   error?: {

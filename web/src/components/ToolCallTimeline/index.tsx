@@ -43,8 +43,20 @@ function inferMcpServerName(toolName?: string): string | undefined {
 function getToolSource(tc: AssistantToolCallEvent): string {
   return (
     tc.source ||
+    getNestedString(tc.metadata, ['source']) ||
     getNestedString(tc.result, ['metadata', 'source']) ||
     (tc.tool_name?.startsWith('mcp__') ? 'mcp' : 'internal')
+  );
+}
+
+function getToolRole(tc: AssistantToolCallEvent): string | undefined {
+  return tc.role || getNestedString(tc.metadata, ['role']);
+}
+
+function getMultiAgentRunId(tc: AssistantToolCallEvent): string | undefined {
+  return (
+    tc.multi_agent_run_id ||
+    getNestedString(tc.metadata, ['multi_agent_run_id'])
   );
 }
 
@@ -90,6 +102,8 @@ const ToolCallTimeline: React.FC<ToolCallTimelineProps> = ({ toolCalls }) => {
   const items = toolCalls.map((tc, idx) => {
     const key = `${tc.tool_name ?? 'tool'}-${tc.step ?? idx}`;
     const source = getToolSource(tc);
+    const role = getToolRole(tc);
+    const multiAgentRunId = getMultiAgentRunId(tc);
     const serverName = getServerName(tc);
     const riskLevel = getRiskLevel(tc);
     const status = getStatusLabel(tc);
@@ -127,6 +141,8 @@ const ToolCallTimeline: React.FC<ToolCallTimelineProps> = ({ toolCalls }) => {
               {tc.tool_name || '未知工具'}
             </Text>
             <Tag color={source === 'mcp' ? 'purple' : 'blue'}>{source}</Tag>
+            {role && <Tag color="cyan">role={role}</Tag>}
+            {multiAgentRunId && <Tag color="volcano">run={multiAgentRunId}</Tag>}
             {serverName && <Tag color="geekblue">{serverName}</Tag>}
             <Tag color={getRiskColor(riskLevel)}>{riskLevel}</Tag>
             <Tag color={getStatusColor(status)}>{status}</Tag>

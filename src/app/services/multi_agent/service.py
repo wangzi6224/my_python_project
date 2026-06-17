@@ -26,6 +26,9 @@ from src.app.services.multi_agent.schemas import (
 )
 from src.app.services.multi_agent.state import MultiAgentState
 from src.app.services.multi_agent.store import MultiAgentStore
+from src.app.services.multi_agent.coordinator.loop import MultiAgentCoordinatorLoop
+from src.app.services.multi_agent.coordinator.schemas import CoordinatorGlobalState
+from src.app.services.multi_agent.schemas import AgentArtifact, HandoffMessage
 
 
 class MultiAgentService:
@@ -39,6 +42,7 @@ class MultiAgentService:
         self.formatter = MultiAgentArtifactFormatter()
         self.context_assembler = ContextAssembler()
         self.llm_provider = get_llm_provider()
+        self.coordinator_loop = MultiAgentCoordinatorLoop()
 
     def chat(
         self,
@@ -126,77 +130,58 @@ class MultiAgentService:
                 model=selected_model,
             )
             self._accept_role_result(state, supervisor_result)
-            state.task_plan = cast(
-                TaskPlan | None,
-                supervisor_result.artifact and supervisor_result.artifact.data
-            )
 
             if supervisor_result.artifact:
                 self.store.create_artifact(
-                    supervisor_result.artifact, multi_agent_run_id=state.run_id
+                    supervisor_result.artifact,
+                    multi_agent_run_id=state.run_id,
+                )
+                state.task_plan = cast(
+                    TaskPlan | None,
+                    supervisor_result.artifact and supervisor_result.artifact.data,
                 )
 
-            research_result = self.research.run_with_timing(
+            success_criteria = []
+            if isinstance(state.task_plan, dict):
+                success_criteria = state.task_plan.get("success_criteria") or []
+            elif state.task_plan:
+                success_criteria = state.task_plan.success_criteria
+
+            global_state = CoordinatorGlobalState(
+                multi_agent_run_id=state.run_id,
+                conversation_id=conversation_id,
+                user_message_id=user_message["id"],
                 question=clean_question,
-                top_k=top_k,
-                score_threshold=score_threshold,
+                model=selected_model,
+                max_rounds=state.config.max_rounds,
+                max_role_steps=state.config.max_role_steps,
+                initial_constraints=constraints,
+                success_criteria=success_criteria,
+                trace_id=trace_id,
+                assistant_run_id=assistant_run_id,
+                parent_span_id=parent_span_id,
+            )
+
+            if supervisor_result.artifact:
+                global_state.artifacts.append(
+                    supervisor_result.artifact.model_dump(mode="json")
+                )
+
+            global_state = self.coordinator_loop.run(
+                state=global_state,
                 enable_mcp_tools=enable_mcp_tools,
-                model=selected_model,
-            )
-            self._accept_role_result(state, research_result)
-            if research_result.artifact:
-                self.store.create_artifact(
-                    research_result.artifact, multi_agent_run_id=state.run_id
-                )
-
-            research_artifact = cast(Any, research_result.artifact)
-            research_to_coding = self.handoff_builder.build(
-                from_role="research",
-                to_role="coding",
-                artifact=research_artifact,
-                task_id="coding",
-                constraints=constraints,
-            )
-            state.add_handoff(research_to_coding)
-            self.store.create_handoff(
-                research_to_coding, multi_agent_run_id=state.run_id
             )
 
-            coding_result = self.coding.run_with_timing(
-                question=clean_question,
-                research_artifact=research_artifact,
-                constraints=constraints,
-                model=selected_model,
-            )
-            self._accept_role_result(state, coding_result)
-            if coding_result.artifact:
-                self.store.create_artifact(
-                    coding_result.artifact, multi_agent_run_id=state.run_id
-                )
-
-            coding_artifact = cast(Any, coding_result.artifact)
-            coding_to_review = self.handoff_builder.build(
-                from_role="coding",
-                to_role="review",
-                artifact=coding_artifact,
-                task_id="review",
-                constraints=constraints,
-            )
-            state.add_handoff(coding_to_review)
-            self.store.create_handoff(coding_to_review, multi_agent_run_id=state.run_id)
-
-            review_result = self.review.run_with_timing(
-                question=clean_question,
-                research_artifact=research_artifact,
-                coding_artifact=coding_artifact,
-                constraints=constraints,
-                model=selected_model,
-            )
-            self._accept_role_result(state, review_result)
-            if review_result.artifact:
-                self.store.create_artifact(
-                    review_result.artifact, multi_agent_run_id=state.run_id
-                )
+            # 将 coordinator global_state 同步回旧 MultiAgentState，保持后续 final/context/trace 兼容。
+            state.artifacts = [
+                AgentArtifact.model_validate(item) for item in global_state.artifacts
+            ]
+            state.handoffs = [
+                HandoffMessage.model_validate(item) for item in global_state.handoffs
+            ]
+            state.tool_calls = global_state.tool_calls
+            state.metadata["coordinator"] = global_state.model_dump(mode="json")
+            state.finish_reason = global_state.finish_reason
 
             answer = self._final_answer_with_context(
                 state=state,
@@ -351,6 +336,7 @@ class MultiAgentService:
             "tool_calls": state.tool_calls,
             "review_decision": self._extract_review_decision(state),
             "context": state.metadata.get("context"),
+            "coordinator": state.metadata.get("coordinator"),
         }
 
     def _build_role_runs(self, state: MultiAgentState) -> list[dict[str, Any]]:

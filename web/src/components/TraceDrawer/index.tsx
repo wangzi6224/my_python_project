@@ -1,5 +1,6 @@
 import { ChatMessage } from '@/contexts/ChatContext';
 import JsonViewer from '@/components/JsonViewer';
+import FlowCanvas from '@/components/FlowCanvas';
 import ToolCallTimeline from '@/components/ToolCallTimeline';
 import { XMarkdown } from '@ant-design/x-markdown';
 import type {
@@ -40,10 +41,15 @@ type MultiAgentHandoff = MultiAgentTrace['handoffs'][number];
 type MultiAgentArtifact = MultiAgentTrace['artifacts'][number];
 
 interface RoleGraphNode {
-  role: string;
+  id: string;
+  kind: 'start' | 'decision' | 'role' | 'finish';
+  title: string;
+  subtitle: string;
+  status: string;
   x: number;
   y: number;
   run?: MultiAgentRoleRun;
+  round?: JsonRecord;
 }
 
 interface RoleGraphEdge {
@@ -52,9 +58,10 @@ interface RoleGraphEdge {
   to: string;
   summary: string;
   confidence?: number;
+  dashed?: boolean;
 }
 
-interface ArtifactPreview {
+export interface ArtifactPreview {
   title: string;
   role?: string;
   artifactType?: string;
@@ -287,97 +294,156 @@ function roleRunStatusTag(status: string) {
   return <Tag color={color}>{status}</Tag>;
 }
 
-function getRoleOrder(trace: MultiAgentTrace): string[] {
-  const orderedRoles: string[] = [];
-  const seen = new Set<string>();
-  const addRole = (role?: string) => {
-    if (!role || seen.has(role)) return;
-    seen.add(role);
-    orderedRoles.push(role);
-  };
-
-  trace.roles_used.forEach(addRole);
-  trace.role_runs?.forEach((run) => addRole(run.role));
-  trace.handoffs.forEach((handoff) => {
-    addRole(handoff.from_role);
-    addRole(handoff.to_role);
-  });
-
-  const incomingCount = new Map(orderedRoles.map((role) => [role, 0]));
-  const outgoing = new Map<string, string[]>();
-
-  trace.handoffs.forEach((handoff) => {
-    const from = handoff.from_role;
-    const to = handoff.to_role;
-    if (!from || !to || from === '-' || to === '-' || from === to) return;
-
-    incomingCount.set(to, (incomingCount.get(to) || 0) + 1);
-    outgoing.set(from, [...(outgoing.get(from) || []), to]);
-  });
-
-  const queue = orderedRoles.filter((role) => (incomingCount.get(role) || 0) === 0);
-  const sorted: string[] = [];
-
-  while (queue.length > 0) {
-    const role = queue.shift();
-    if (!role || sorted.includes(role)) continue;
-
-    sorted.push(role);
-    for (const nextRole of outgoing.get(role) || []) {
-      incomingCount.set(nextRole, (incomingCount.get(nextRole) || 0) - 1);
-      if ((incomingCount.get(nextRole) || 0) === 0) {
-        queue.push(nextRole);
-      }
-    }
-  }
-
-  orderedRoles.forEach((role) => {
-    if (!sorted.includes(role)) sorted.push(role);
-  });
-
-  return sorted;
-}
-
 function buildRoleGraph(trace: MultiAgentTrace): {
   nodes: RoleGraphNode[];
   edges: RoleGraphEdge[];
   width: number;
   height: number;
 } {
-  const roleRunsByRole = new Map(
-    (trace.role_runs || []).map((run) => [run.role, run]),
+  const coordinator = getRecord(trace.coordinator) || {};
+  const rounds = getRecordArray(coordinator.rounds);
+  const coordinatorRuns = getRecordArray(coordinator.role_runs).map(normalizeRoleRun);
+  const sourceRuns = coordinatorRuns.length ? coordinatorRuns : trace.role_runs || [];
+  const nodes: RoleGraphNode[] = [];
+  const edges: RoleGraphEdge[] = [];
+  const nodeGap = 238;
+  const startX = 34;
+  let actionRunIndex = 0;
+  let previousNodeId = 'start';
+
+  const supervisorRun = (trace.role_runs || []).find(
+    (run) => run.role === 'supervisor',
   );
-  const roles = getRoleOrder(trace);
-  const nodeWidth = 150;
-  const gap = 110;
-  const marginX = 42;
-  const width = Math.max(760, marginX * 2 + roles.length * nodeWidth + Math.max(roles.length - 1, 0) * gap);
-  const height = 220;
-  const centerY = 96;
+  nodes.push({
+    id: 'start',
+    kind: 'start',
+    title: supervisorRun ? 'Supervisor' : 'Assistant Router',
+    subtitle: supervisorRun?.artifact?.title || '进入动态编排',
+    status: supervisorRun?.status || 'completed',
+    x: startX,
+    y: 122,
+    run: supervisorRun,
+  });
 
-  const nodes = roles.map((role, index) => ({
-    role,
-    x: marginX + index * (nodeWidth + gap),
-    y: centerY,
-    run: roleRunsByRole.get(role),
-  }));
-  const edges = trace.handoffs
-    .filter(
-      (handoff) =>
-        handoff.from_role &&
-        handoff.to_role &&
-        handoff.from_role !== '-' &&
-        handoff.to_role !== '-',
-    )
-    .map((handoff, index) => ({
-      id: handoff.id || `${handoff.from_role}-${handoff.to_role}-${index}`,
-      from: handoff.from_role,
-      to: handoff.to_role,
-      summary: handoff.summary,
-      confidence: handoff.confidence,
-    }));
+  if (rounds.length > 0) {
+    rounds.forEach((round, index) => {
+      const decision = getRecord(round.decision) || {};
+      const decisionType = getString(decision.type) || 'unknown';
+      const role = getString(decision.role, decision.target_role);
+      const roundNumber = getNumber(round.round_index) ?? index + 1;
+      const x = startX + (index + 1) * nodeGap;
+      const decisionId = `round-${roundNumber}-decision`;
+      const isRoleAction = ['run_role', 'revise_role', 'request_review'].includes(
+        decisionType,
+      );
 
-  return { nodes, edges, width, height };
+      nodes.push({
+        id: decisionId,
+        kind: decisionType === 'final' || decisionType === 'fail' ? 'finish' : 'decision',
+        title: `Round ${roundNumber} · ${decisionType}`,
+        subtitle: getString(decision.task_title, decision.reason) || '-',
+        status: getString(round.status) || 'unknown',
+        x,
+        y: 34,
+        round,
+      });
+      edges.push({
+        id: `${previousNodeId}-${decisionId}`,
+        from: previousNodeId,
+        to: decisionId,
+        summary: `进入第 ${roundNumber} 轮`,
+      });
+
+      if (isRoleAction && role) {
+        const run = sourceRuns[actionRunIndex++];
+        const artifactId = getString(round.artifact_id, getRecord(run?.trace)?.artifact_id);
+        const artifact = trace.artifacts.find(
+          (item) => item.id === artifactId,
+        ) || trace.artifacts.find((item) => item.role === role);
+        const enrichedRun: MultiAgentRoleRun = run
+          ? { ...run, artifact: run.artifact || artifact || null }
+          : {
+              role,
+              status: getString(round.status) || 'unknown',
+              artifact: artifact || null,
+              trace: {},
+              tool_calls: [],
+            };
+        const roleId = `round-${roundNumber}-role`;
+        nodes.push({
+          id: roleId,
+          kind: 'role',
+          title: role,
+          subtitle: artifact?.title || getString(decision.task_title) || '角色执行',
+          status: enrichedRun.status,
+          x,
+          y: 172,
+          run: enrichedRun,
+          round,
+        });
+        edges.push({
+          id: `${decisionId}-${roleId}`,
+          from: decisionId,
+          to: roleId,
+          summary: getString(decision.reason) || `调度 ${role}`,
+          confidence: getNumber(decision.confidence),
+        });
+        previousNodeId = roleId;
+      } else {
+        previousNodeId = decisionId;
+      }
+    });
+  } else {
+    sourceRuns.forEach((run, index) => {
+      const id = `legacy-role-${index}`;
+      nodes.push({
+        id,
+        kind: 'role',
+        title: run.role,
+        subtitle: run.artifact?.title || '角色执行',
+        status: run.status,
+        x: startX + (index + 1) * nodeGap,
+        y: 122,
+        run,
+      });
+      edges.push({ id: `${previousNodeId}-${id}`, from: previousNodeId, to: id, summary: '执行顺序' });
+      previousNodeId = id;
+    });
+  }
+
+  const finishReason = getString(coordinator.finish_reason);
+  if (finishReason && !nodes.some((node) => node.kind === 'finish')) {
+    const finishId = 'finish';
+    nodes.push({
+      id: finishId,
+      kind: 'finish',
+      title: 'Final Synthesis',
+      subtitle: finishReason,
+      status: finishReason.includes('fail') ? 'failed' : 'completed',
+      x: startX + (Math.max(rounds.length, sourceRuns.length) + 1) * nodeGap,
+      y: 122,
+    });
+    edges.push({ id: `${previousNodeId}-${finishId}`, from: previousNodeId, to: finishId, summary: finishReason });
+  }
+
+  trace.handoffs.forEach((handoff, index) => {
+    const fromNodes = nodes.filter((node) => node.kind === 'role' && node.title === handoff.from_role);
+    const toNode = nodes.find((node) => node.kind === 'role' && node.title === handoff.to_role && node.x > (fromNodes.at(-1)?.x || 0));
+    const fromNode = fromNodes.at(-1);
+    if (fromNode && toNode) {
+      edges.push({
+        id: `handoff-${handoff.id || index}`,
+        from: fromNode.id,
+        to: toNode.id,
+        summary: handoff.summary,
+        confidence: handoff.confidence,
+        dashed: true,
+      });
+    }
+  });
+
+  const maxX = Math.max(...nodes.map((node) => node.x), 760);
+  return { nodes, edges, width: Math.max(900, maxX + 220), height: 300 };
 }
 
 function renderHandoffList(title: string, handoffs: MultiAgentHandoff[]) {
@@ -418,6 +484,8 @@ function renderRoleRun(
   const incomingHandoffs = run.handoffs?.incoming || [];
   const outgoingHandoffs = run.handoffs?.outgoing || [];
   const artifact = run.artifact;
+  const roleSteps = getRecordArray(run.trace?.steps);
+  const plannerEvents = getRecordArray(run.trace?.role_planner_events);
 
   return (
     <div className={styles.roleRunDetail}>
@@ -486,6 +554,37 @@ function renderRoleRun(
         <ToolCallTimeline toolCalls={run.tool_calls} />
       </div>
 
+      {roleSteps.length > 0 || plannerEvents.length > 0 ? (
+        <div className={styles.roleRunSubsection}>
+          <Text strong className={styles.roleRunSubTitle}>
+            Planner / Role Steps ({roleSteps.length})
+          </Text>
+          <Collapse
+            size="small"
+            className={styles.summaryCollapse}
+            items={[
+              ...roleSteps.map((step, index) => ({
+                key: `step-${index}`,
+                label: (
+                  <div className={styles.roleRunHeader}>
+                    <Text>Step {getNumber(step.step) ?? index + 1}</Text>
+                    <Tag color={step.success === false ? 'error' : step.type === 'final' ? 'success' : 'blue'}>
+                      {getString(step.type) || 'unknown'}
+                    </Tag>
+                    {getString(step.tool_name) ? <Tag>{getString(step.tool_name)}</Tag> : null}
+                    <Text type="secondary">{formatLatency(getNumber(step.latency_ms))}</Text>
+                  </div>
+                ),
+                children: <JsonViewer value={step} maxHeight={300} />,
+              })),
+              ...(plannerEvents.length
+                ? [{ key: 'planner-events', label: `Planner Events (${plannerEvents.length})`, children: <JsonViewer value={plannerEvents} maxHeight={320} /> }]
+                : []),
+            ]}
+          />
+        </div>
+      ) : null}
+
       {renderHandoffList('Incoming Handoffs', incomingHandoffs)}
       {renderHandoffList('Outgoing Handoffs', outgoingHandoffs)}
 
@@ -501,30 +600,24 @@ function renderRoleRun(
   );
 }
 
-const MultiAgentRoleGraph: React.FC<{
+export const MultiAgentRoleGraph: React.FC<{
   trace: MultiAgentTrace;
   onOpenArtifact: (artifact: ArtifactPreview) => void;
 }> = ({ trace, onOpenArtifact }) => {
   const graph = useMemo(() => buildRoleGraph(trace), [trace]);
-  const [selectedRole, setSelectedRole] = useState<string | undefined>(
-    graph.nodes[0]?.role,
+  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(
+    graph.nodes[0]?.id,
   );
   const nodeMap = useMemo(
-    () => new Map(graph.nodes.map((node) => [node.role, node])),
+    () => new Map(graph.nodes.map((node) => [node.id, node])),
     [graph.nodes],
   );
-  const effectiveSelectedRole =
-    graph.nodes.find((node) => node.role === selectedRole)?.role ||
-    graph.nodes[0]?.role;
-  const selectedNode = effectiveSelectedRole
-    ? nodeMap.get(effectiveSelectedRole)
+  const effectiveSelectedId = nodeMap.has(selectedNodeId || '')
+    ? selectedNodeId
+    : graph.nodes[0]?.id;
+  const selectedNode = effectiveSelectedId
+    ? nodeMap.get(effectiveSelectedId)
     : undefined;
-  const selectedIncoming = trace.handoffs.filter(
-    (handoff) => handoff.to_role === effectiveSelectedRole,
-  );
-  const selectedOutgoing = trace.handoffs.filter(
-    (handoff) => handoff.from_role === effectiveSelectedRole,
-  );
 
   if (graph.nodes.length === 0) {
     return (
@@ -537,13 +630,11 @@ const MultiAgentRoleGraph: React.FC<{
 
   return (
     <div className={styles.roleGraphShell}>
-      <div className={styles.roleGraphViewport}>
-        <svg
-          className={styles.roleGraphSvg}
-          viewBox={`0 0 ${graph.width} ${graph.height}`}
-          role="img"
-          aria-label="Multi-Agent role execution graph"
-        >
+      <FlowCanvas
+        width={graph.width}
+        height={graph.height}
+        ariaLabel="Multi-Agent role execution graph"
+      >
           <defs>
             <marker
               id="roleGraphArrow"
@@ -563,12 +654,14 @@ const MultiAgentRoleGraph: React.FC<{
             const toNode = nodeMap.get(edge.to);
             if (!fromNode || !toNode) return null;
 
-            const startX = fromNode.x + 150;
-            const startY = fromNode.y + 33;
+            const startX = fromNode.x + 180;
+            const startY = fromNode.y + 35;
             const endX = toNode.x;
-            const endY = toNode.y + 33;
+            const endY = toNode.y + 35;
             const controlOffset = Math.max(Math.abs(endX - startX) * 0.42, 48);
-            const path = `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`;
+            const path = fromNode.x === toNode.x
+              ? `M ${fromNode.x + 90} ${fromNode.y + 70} L ${toNode.x + 90} ${toNode.y}`
+              : `M ${startX} ${startY} C ${startX + controlOffset} ${startY}, ${endX - controlOffset} ${endY}, ${endX} ${endY}`;
             const labelX = (startX + endX) / 2;
             const labelY = (startY + endY) / 2 - 10;
 
@@ -577,7 +670,7 @@ const MultiAgentRoleGraph: React.FC<{
                 <title>{edge.summary}</title>
                 <path
                   d={path}
-                  className={styles.roleGraphEdge}
+                  className={edge.dashed ? styles.roleGraphEdgeDashed : styles.roleGraphEdge}
                   markerEnd="url(#roleGraphArrow)"
                 />
                 {edge.confidence !== undefined ? (
@@ -595,32 +688,26 @@ const MultiAgentRoleGraph: React.FC<{
           })}
 
           {graph.nodes.map((node) => {
-            const isSelected = node.role === effectiveSelectedRole;
-            const status = node.run?.status || 'pending';
-            const artifactTitle = node.run?.artifact?.title || '';
+            const isSelected = node.id === effectiveSelectedId;
 
             return (
               <g
-                key={node.role}
-                className={styles.roleGraphNode}
+                key={node.id}
+                className={`${styles.roleGraphNode} ${styles[`roleGraphNode_${node.kind}`] || ''}`}
                 transform={`translate(${node.x}, ${node.y})`}
                 role="button"
                 tabIndex={0}
-                onClick={() => setSelectedRole(node.role)}
+                onClick={() => setSelectedNodeId(node.id)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
-                    setSelectedRole(node.role);
+                    setSelectedNodeId(node.id);
                   }
                 }}
               >
-                <title>
-                  {artifactTitle
-                    ? `${node.role}: ${artifactTitle}`
-                    : `${node.role}: ${status}`}
-                </title>
+                <title>{`${node.title}: ${node.subtitle}`}</title>
                 <rect
-                  width="150"
-                  height="66"
+                  width="180"
+                  height="70"
                   rx="8"
                   className={
                     isSelected
@@ -628,35 +715,39 @@ const MultiAgentRoleGraph: React.FC<{
                       : styles.roleGraphNodeRect
                   }
                 />
-                <text x="16" y="24" className={styles.roleGraphNodeTitle}>
-                  {compactText(node.role, 16)}
+                <text x="14" y="22" className={styles.roleGraphNodeTitle}>
+                  {compactText(node.title, 23)}
                 </text>
-                <text x="16" y="43" className={styles.roleGraphNodeStatus}>
-                  {status}
+                <text x="14" y="42" className={styles.roleGraphNodeStatus}>
+                  {compactText(node.subtitle, 25)}
                 </text>
-                <text x="16" y="58" className={styles.roleGraphNodeMeta}>
-                  {formatLatency(node.run?.latency_ms)}
+                <text x="14" y="59" className={styles.roleGraphNodeMeta}>
+                  {node.status} · {formatLatency(node.run?.latency_ms || getNumber(node.round?.latency_ms))}
                 </text>
               </g>
             );
           })}
-        </svg>
-      </div>
+      </FlowCanvas>
 
       <div className={styles.roleGraphDetail}>
         {selectedNode?.run ? (
           renderRoleRun(selectedNode.run, onOpenArtifact)
-        ) : (
-          <>
+        ) : selectedNode?.round ? (
+          <div className={styles.roleRunDetail}>
             <Descriptions size="small" column={2} bordered>
-              <Descriptions.Item label="Role">
-                {effectiveSelectedRole || '-'}
-              </Descriptions.Item>
-              <Descriptions.Item label="Status">pending</Descriptions.Item>
+              <Descriptions.Item label="Node">{selectedNode.title}</Descriptions.Item>
+              <Descriptions.Item label="Status">{roleRunStatusTag(selectedNode.status)}</Descriptions.Item>
+              <Descriptions.Item label="Latency">{formatLatency(getNumber(selectedNode.round.latency_ms))}</Descriptions.Item>
+              <Descriptions.Item label="Artifact ID">{getString(selectedNode.round.artifact_id) || '-'}</Descriptions.Item>
             </Descriptions>
-            {renderHandoffList('Incoming Handoffs', selectedIncoming)}
-            {renderHandoffList('Outgoing Handoffs', selectedOutgoing)}
-          </>
+            <JsonViewer value={selectedNode.round} maxHeight={420} />
+          </div>
+        ) : (
+          <Descriptions size="small" column={2} bordered>
+            <Descriptions.Item label="Node">{selectedNode?.title || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Status">{selectedNode?.status || '-'}</Descriptions.Item>
+            <Descriptions.Item label="Description" span={2}>{selectedNode?.subtitle || '-'}</Descriptions.Item>
+          </Descriptions>
         )}
       </div>
     </div>
@@ -776,6 +867,9 @@ function renderMultiAgentTrace(
     );
   }
 
+  const coordinator = getRecord(trace.coordinator);
+  const rounds = getRecordArray(coordinator?.rounds);
+
   return (
     <>
       <Descriptions
@@ -805,11 +899,17 @@ function renderMultiAgentTrace(
         <Descriptions.Item label="Review Decision">
           {reviewDecisionTag(trace.review_decision)}
         </Descriptions.Item>
+        <Descriptions.Item label="Coordinator Rounds">
+          {rounds.length}
+        </Descriptions.Item>
+        <Descriptions.Item label="Finish Reason">
+          {getString(coordinator?.finish_reason) || '-'}
+        </Descriptions.Item>
       </Descriptions>
 
       <div className={styles.section}>
         <Text strong className={styles.sectionTitle}>
-          Role Execution Flow
+          Dynamic Execution Flow
         </Text>
         <MultiAgentRoleGraph trace={trace} onOpenArtifact={onOpenArtifact} />
       </div>
@@ -832,9 +932,9 @@ function getMultiAgentTrace(
   msg: ChatMessage,
   detail: TraceDetailResponse | null,
 ): MultiAgentTrace | undefined {
-  if (msg.multiAgentTrace) return msg.multiAgentTrace;
-
   const candidates = [
+    nested(detail, ['run', 'trace', 'multi_agent']),
+    msg.multiAgentTrace,
     getRecord(msg.trace)?.multi_agent,
     getRecord(nested(detail, ['trace']))?.multi_agent,
     nested(detail, ['metadata', 'multi_agent']),
@@ -843,17 +943,30 @@ function getMultiAgentTrace(
 
   for (const candidate of candidates) {
     if (!isRecord(candidate)) continue;
+    const coordinator = getRecord(candidate.coordinator);
+    const coordinatorRoleRuns = getRecordArray(coordinator?.role_runs);
+    const roleRuns = getRecordArray(candidate.role_runs);
+    const rolesUsed = getStringArray(candidate.roles_used);
 
     return {
       enabled: getBoolean(candidate.enabled) ?? true,
       run_id: getString(candidate.run_id),
-      roles_used: getStringArray(candidate.roles_used),
+      roles_used: rolesUsed.length
+        ? rolesUsed
+        : Array.from(
+            new Set(
+              [...roleRuns, ...coordinatorRoleRuns]
+                .map((item) => getString(item.role))
+                .filter((role): role is string => Boolean(role)),
+            ),
+          ),
       artifact_count:
         getNumber(candidate.artifact_count) ?? getRecordArray(candidate.artifacts).length,
       handoff_count:
         getNumber(candidate.handoff_count) ?? getRecordArray(candidate.handoffs).length,
       review_decision: getString(candidate.review_decision),
-      role_runs: getRecordArray(candidate.role_runs).map(normalizeRoleRun),
+      coordinator,
+      role_runs: roleRuns.map(normalizeRoleRun),
       artifacts: getRecordArray(candidate.artifacts).map((item) => ({
         id: getString(item.id) || '',
         role: getString(item.role) || '-',
@@ -861,6 +974,9 @@ function getMultiAgentTrace(
         title: getString(item.title) || '-',
         confidence: getNumber(item.confidence),
         content: getString(item.content),
+        data: getRecord(item.data),
+        source_refs: getRecordArray(item.source_refs),
+        metadata: getRecord(item.metadata),
       })),
       handoffs: getRecordArray(candidate.handoffs).map((item) => ({
         id: getString(item.id) || '',

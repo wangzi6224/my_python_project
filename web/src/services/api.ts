@@ -284,6 +284,54 @@ export interface TraceDetailResponse {
   trace_id: string;
   summary: TraceSummary;
   spans: TraceSpan[];
+  run?: AssistantTraceRun | null;
+}
+
+export interface TraceListItem {
+  trace_id: string;
+  assistant_run_id: string;
+  conversation_id?: string | null;
+  mode?: string | null;
+  status: string;
+  input: string;
+  final_answer?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  latency_ms?: number | null;
+  created_at: string;
+  updated_at: string;
+  summary: TraceSummary;
+  multi_agent: {
+    enabled: boolean;
+    run_id?: string | null;
+    roles_used: string[];
+    artifact_count: number;
+    handoff_count: number;
+    review_decision?: string | null;
+    finish_reason?: string | null;
+    round_count: number;
+  };
+}
+
+export interface AssistantTraceRun {
+  id: string;
+  conversation_id: string;
+  mode: string;
+  status: string;
+  input: string;
+  final_answer?: string | null;
+  model?: string | null;
+  provider?: string | null;
+  latency_ms?: number | null;
+  trace: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TraceListResponse {
+  conversation_id: string;
+  items: TraceListItem[];
 }
 
 export interface MultiAgentTrace {
@@ -293,6 +341,7 @@ export interface MultiAgentTrace {
   artifact_count: number;
   handoff_count: number;
   review_decision?: string;
+  coordinator?: Record<string, unknown>;
   role_runs?: Array<{
     role: string;
     status: string;
@@ -336,6 +385,9 @@ export interface MultiAgentTrace {
     title: string;
     confidence?: number;
     content?: string;
+    data?: Record<string, unknown>;
+    source_refs?: Array<Record<string, unknown>>;
+    metadata?: Record<string, unknown>;
   }>;
   handoffs: Array<{
     id: string;
@@ -854,6 +906,15 @@ export async function getAssistantRun(
 
 export async function getTrace(traceId: string): Promise<TraceDetailResponse> {
   const { data } = await http.get<TraceDetailResponse>(`/traces/${traceId}`);
+  return data;
+}
+
+export async function listTraces(
+  conversationId: string,
+): Promise<TraceListResponse> {
+  const { data } = await http.get<TraceListResponse>('/traces', {
+    params: { conversation_id: conversationId },
+  });
   return data;
 }
 

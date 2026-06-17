@@ -1,6 +1,5 @@
-from __future__ import annotations
-
 from src.app.services.multi_agent.schemas import AgentRole
+
 
 ROLE_ALLOWED_TOOLS: dict[AgentRole, list[str]] = {
     "supervisor": [],
@@ -8,12 +7,15 @@ ROLE_ALLOWED_TOOLS: dict[AgentRole, list[str]] = {
         "list_docs",
         "search_docs",
         "read_doc",
-        # TODO 还没开始做
-        # "search_graph",
-        # "inspect_entity_graph",
     ],
-    "coding": [],
-    "review": [],
+    "coding": [
+        "search_docs",
+        "read_doc",
+    ],
+    "review": [
+        "search_docs",
+        "read_doc",
+    ],
     "final_synthesizer": [],
 }
 
@@ -31,14 +33,16 @@ def get_role_allowed_tools(
     role: AgentRole,
     *,
     enable_mcp_tools: bool,
-    mcp_allowed_tools: list[str],
+    mcp_allowed_tools: list[str] | None = None,
 ) -> list[str]:
-    tools = list(ROLE_ALLOWED_TOOLS.get(role, []))
+    allowed = list(ROLE_ALLOWED_TOOLS.get(role, []))
 
-    if enable_mcp_tools:
-        prefixes = ROLE_ALLOWED_MCP_PREFIXES.get(role, [])
-        for tool in mcp_allowed_tools:
-            if any(tool.startswith(prefix) for prefix in prefixes):
-                tools.append(tool)
+    if not enable_mcp_tools:
+        return allowed
 
-    return tools
+    prefixes = ROLE_ALLOWED_MCP_PREFIXES.get(role, [])
+    for tool_name in mcp_allowed_tools or []:
+        if any(tool_name.startswith(prefix) for prefix in prefixes):
+            allowed.append(tool_name)
+
+    return allowed

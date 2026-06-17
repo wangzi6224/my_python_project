@@ -26,6 +26,26 @@ def _normalize_run(row: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 class AssistantRunStore:
+    def list_runs_by_conversation(self, conversation_id: str) -> list[dict[str, Any]]:
+        """按时间倒序返回会话的 Assistant Run，供统一 Trace 列表使用。"""
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT *
+                    FROM assistant_runs
+                    WHERE conversation_id = %(conversation_id)s
+                    ORDER BY created_at DESC
+                    """,
+                    {"conversation_id": conversation_id},
+                )
+                rows = cur.fetchall()
+
+        return [
+            cast(dict[str, Any], _normalize_run(cast(dict[str, Any], row)))
+            for row in rows
+        ]
+
     def create_run(
         self,
         *,

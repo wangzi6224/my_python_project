@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from src.app.services.multi_agent.agents.base import BaseRoleAgent
 from src.app.services.multi_agent.prompts import (
     REVIEW_PROMPT_VERSION,
     REVIEW_SYSTEM_PROMPT,
@@ -13,11 +12,15 @@ from src.app.services.multi_agent.schemas import (
     ReviewArtifactData,
     RoleRunResult,
 )
+from src.app.services.multi_agent.agents.autonomous_role_agent import AutonomousRoleAgent
 
 
-class ReviewAgent(BaseRoleAgent):
+
+class ReviewAgent(AutonomousRoleAgent):
     role = "review"
     prompt_version = REVIEW_PROMPT_VERSION
+    artifact_type = "review_report"
+    default_artifact_title = "ReviewAgent 审查报告"
 
     def run(
         self,

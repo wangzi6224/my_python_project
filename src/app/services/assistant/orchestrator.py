@@ -1075,6 +1075,11 @@ class AssistantOrchestrator:
             tool_calls
         )
 
+        multi_agent_trace = (
+            trace
+            if request.options.enable_multi_agent and trace.get("enabled") is True
+            else trace.get("multi_agent")
+        )
         assistant_trace: dict[str, Any] = {
             "route_decision": route_decision.model_dump(),
             "planner": self._normalize_planner_trace(trace.get("planner")),
@@ -1088,7 +1093,7 @@ class AssistantOrchestrator:
             },
             "context": trace.get("context"),
             "mcp": trace.get("mcp"),
-            "multi_agent": trace.get("multi_agent"),
+            "multi_agent": multi_agent_trace,
             "memory": {
                 "short_term": self._build_short_term_memory_trace(
                     enabled=request.options.enable_short_term_memory,

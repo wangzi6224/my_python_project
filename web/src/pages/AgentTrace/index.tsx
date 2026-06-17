@@ -1,437 +1,207 @@
 import {
-  AgentRunItem,
   ConversationItem,
-  getAgentRuns,
+  TraceListItem,
   getConversations,
+  listTraces,
 } from '@/services';
 import {
-  EyeOutlined,
+  ApiOutlined,
+  ApartmentOutlined,
+  ArrowRightOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   FileTextOutlined,
   MessageOutlined,
   ReloadOutlined,
   SearchOutlined,
+  WarningOutlined,
 } from '@ant-design/icons';
 import { history, useLocation } from '@umijs/max';
-import {
-  Alert,
-  Button,
-  Card,
-  Col,
-  Empty,
-  Input,
-  Row,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography,
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Button, Card, Empty, Input, Select, Space, Spin, Tag, Typography } from 'antd';
 import axios from 'axios';
 import React, { useEffect, useMemo, useState } from 'react';
 import styles from './index.module.less';
 
 const { Paragraph, Text, Title } = Typography;
 
-const getErrorText = (error: unknown): string => {
+const errorText = (error: unknown) => {
   if (axios.isAxiosError(error)) {
-    const data = error.response?.data as
-      | { message?: string; detail?: unknown; code?: string }
-      | undefined;
-    const detailText =
-      typeof data?.detail === 'string' ? data.detail : undefined;
-
-    return (
-      data?.message ||
-      detailText ||
-      data?.code ||
-      error.message ||
-      '请求失败，请稍后重试'
-    );
+    const detail = error.response?.data?.detail;
+    return typeof detail === 'string' ? detail : error.message;
   }
-
-  if (error instanceof Error) return error.message;
-
-  return '请求失败，请稍后重试';
+  return error instanceof Error ? error.message : '请求失败，请稍后重试';
 };
 
-const formatDateTime = (value?: string): string => {
-  if (!value) return '-';
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) return value;
-
-  return date.toLocaleString('zh-CN', { hour12: false });
-};
-
-const formatLatency = (value?: number | null): string => {
-  if (typeof value !== 'number' || Number.isNaN(value)) return '-';
-
-  return `${value}ms`;
-};
-
-const statusColor = (status?: string): string => {
-  const normalized = (status || '').toLowerCase();
-
-  if (normalized.includes('fail') || normalized.includes('error')) {
-    return 'error';
-  }
-
-  if (normalized.includes('run') || normalized.includes('pending')) {
-    return 'processing';
-  }
-
-  if (
-    normalized.includes('done') ||
-    normalized.includes('complete') ||
-    normalized.includes('success')
-  ) {
-    return 'success';
-  }
-
-  return 'default';
-};
-
-const getConversationLabel = (item: ConversationItem): string => {
-  const title = item.title || item.id;
-  const suffix = item.message_count ? ` · ${item.message_count} 条消息` : '';
-
-  return `${title}${suffix}`;
-};
+const formatTime = (value?: string) =>
+  value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '-';
+const formatLatency = (value?: number | null) =>
+  typeof value === 'number'
+    ? value >= 1000
+      ? `${(value / 1000).toFixed(2)}s`
+      : `${value}ms`
+    : '-';
+const statusColor = (status: string) =>
+  status === 'completed' || status === 'success'
+    ? 'success'
+    : status === 'running'
+    ? 'processing'
+    : status === 'failed' || status === 'error'
+    ? 'error'
+    : 'default';
 
 const AgentTracePage: React.FC = () => {
   const location = useLocation();
-  const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [selectedConversationId, setSelectedConversationId] =
-    useState<string>('');
-  const [conversationLoading, setConversationLoading] =
-    useState<boolean>(false);
-  const [runs, setRuns] = useState<AgentRunItem[]>([]);
-  const [runsLoading, setRunsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string>('');
-  const [keyword, setKeyword] = useState<string>('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-
-  const queryConversationId = useMemo(() => {
-    return new URLSearchParams(location.search).get('conversation_id') || '';
-  }, [location.search]);
-
-  const conversationOptions = useMemo(
-    () =>
-      conversations.map((item) => ({
-        label: getConversationLabel(item),
-        value: item.id,
-      })),
-    [conversations],
+  const queryId = useMemo(
+    () => new URLSearchParams(location.search).get('conversation_id') || '',
+    [location.search],
   );
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [conversationId, setConversationId] = useState('');
+  const [traces, setTraces] = useState<TraceListItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [keyword, setKeyword] = useState('');
+  const [type, setType] = useState('all');
 
-  const filteredRuns = useMemo(() => {
-    const normalizedKeyword = keyword.trim().toLowerCase();
-
-    return runs.filter((item) => {
-      const matchStatus =
-        statusFilter === 'all' || item.status === statusFilter;
-      const matchKeyword =
-        !normalizedKeyword ||
-        [
-          item.id,
-          item.conversation_id,
-          item.input,
-          item.final_answer || '',
-          item.model || '',
-          item.provider || '',
-          item.status,
-        ].some((value) =>
-          String(value || '').toLowerCase().includes(normalizedKeyword),
-        );
-
-      return matchStatus && matchKeyword;
-    });
-  }, [keyword, runs, statusFilter]);
-
-  const statusOptions = useMemo(() => {
-    const uniqueStatuses = Array.from(new Set(runs.map((item) => item.status)))
-      .filter(Boolean)
-      .sort();
-
-    return [
-      { label: '全部状态', value: 'all' },
-      ...uniqueStatuses.map((status) => ({
-        label: status,
-        value: status,
-      })),
-    ];
-  }, [runs]);
-
-  const runStats = useMemo(() => {
-    const failed = runs.filter((item) => statusColor(item.status) === 'error');
-    const steps = runs.reduce((sum, item) => sum + (item.step_count || 0), 0);
-    const latest = runs[0]?.created_at ? formatDateTime(runs[0].created_at) : '-';
-
-    return {
-      total: runs.length,
-      failed: failed.length,
-      steps,
-      latest,
-    };
-  }, [runs]);
-
-  const fetchRuns = async (conversationId: string): Promise<void> => {
-    if (!conversationId) {
-      setRuns([]);
-      return;
-    }
-
-    setRunsLoading(true);
+  const loadTraces = async (id: string) => {
+    if (!id) return setTraces([]);
+    setLoading(true);
     setError('');
-
     try {
-      const response = await getAgentRuns(conversationId);
-      setRuns(response.runs || []);
+      setTraces((await listTraces(id)).items || []);
     } catch (requestError) {
-      setRuns([]);
-      setError(getErrorText(requestError));
+      setError(errorText(requestError));
+      setTraces([]);
     } finally {
-      setRunsLoading(false);
-    }
-  };
-
-  const syncSelectedConversation = (conversationId: string): void => {
-    setSelectedConversationId(conversationId);
-
-    if (conversationId) {
-      history.replace(
-        `/traces?conversation_id=${encodeURIComponent(conversationId)}`,
-      );
-    } else {
-      history.replace('/traces');
-    }
-  };
-
-  const fetchConversations = async (): Promise<void> => {
-    setConversationLoading(true);
-    setError('');
-
-    try {
-      const response = await getConversations();
-      const items = response.items || [];
-      setConversations(items);
-
-      const nextConversationId =
-        queryConversationId &&
-        items.some((item) => item.id === queryConversationId)
-          ? queryConversationId
-          : items[0]?.id || '';
-
-      syncSelectedConversation(nextConversationId);
-
-      if (nextConversationId) {
-        await fetchRuns(nextConversationId);
-      } else {
-        setRuns([]);
-      }
-    } catch (requestError) {
-      setError(getErrorText(requestError));
-    } finally {
-      setConversationLoading(false);
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    void fetchConversations();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const load = async () => {
+      setLoading(true);
+      try {
+        const items = (await getConversations()).items || [];
+        setConversations(items);
+        const next = items.some((item) => item.id === queryId)
+          ? queryId
+          : items[0]?.id || '';
+        setConversationId(next);
+        if (next) await loadTraces(next);
+      } catch (requestError) {
+        setError(errorText(requestError));
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
   }, []);
 
-  const handleConversationChange = (conversationId: string): void => {
-    syncSelectedConversation(conversationId);
-    void fetchRuns(conversationId);
+  const filtered = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    return traces.filter((item) => {
+      const matchesType =
+        type === 'all' || (type === 'multi' ? item.multi_agent.enabled : !item.multi_agent.enabled);
+      const haystack = [item.input, item.trace_id, item.model, item.provider, item.status]
+        .join(' ')
+        .toLowerCase();
+      return matchesType && (!q || haystack.includes(q));
+    });
+  }, [keyword, traces, type]);
+
+  const stats = useMemo(
+    () => ({
+      total: traces.length,
+      multi: traces.filter((item) => item.multi_agent.enabled).length,
+      rounds: traces.reduce((sum, item) => sum + item.multi_agent.round_count, 0),
+      errors: traces.filter((item) => ['failed', 'error'].includes(item.status)).length,
+    }),
+    [traces],
+  );
+
+  const changeConversation = (id: string) => {
+    setConversationId(id);
+    history.replace(`/traces?conversation_id=${encodeURIComponent(id)}`);
+    void loadTraces(id);
   };
-
-  const openRunDetail = (runId: string): void => {
-    const search = selectedConversationId
-      ? `?conversation_id=${encodeURIComponent(selectedConversationId)}`
-      : '';
-
-    history.push(`/traces/${runId}${search}`);
-  };
-
-  const columns: ColumnsType<AgentRunItem> = [
-    {
-      title: '时间',
-      dataIndex: 'created_at',
-      width: 180,
-      render: (value: string) => formatDateTime(value),
-    },
-    {
-      title: '问题',
-      dataIndex: 'input',
-      ellipsis: true,
-      render: (value: string) => (
-        <Text ellipsis={{ tooltip: value }} className={styles.questionText}>
-          {value || '-'}
-        </Text>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 120,
-      render: (value: string) => <Tag color={statusColor(value)}>{value}</Tag>,
-    },
-    {
-      title: '步数',
-      dataIndex: 'step_count',
-      align: 'right',
-      width: 90,
-    },
-    {
-      title: '耗时',
-      dataIndex: 'total_latency_ms',
-      align: 'right',
-      width: 110,
-      render: (value: number | null) => formatLatency(value),
-    },
-    {
-      title: '模型',
-      dataIndex: 'model',
-      width: 180,
-      render: (value: string | null) => value || '-',
-    },
-    {
-      title: '操作',
-      key: 'action',
-      width: 120,
-      render: (_, record) => (
-        <Button
-          type="link"
-          icon={<EyeOutlined />}
-          onClick={() => openRunDetail(record.id)}
-        >
-          查看详情
-        </Button>
-      ),
-    },
-  ];
 
   return (
     <div className={styles.page}>
-      <div className={styles.header}>
+      <header className={styles.hero}>
         <div>
-          <Title level={2} className={styles.title}>
-            Agent Trace
-          </Title>
-          <Paragraph className={styles.subtitle}>
-            按会话查看 Agent Run、工具步骤和事件链路。
-          </Paragraph>
+          <div className={styles.eyebrow}><ApartmentOutlined /> MULTI-AGENT OBSERVABILITY</div>
+          <Title level={2} className={styles.title}>Trace Control Center</Title>
+          <Paragraph className={styles.subtitle}>从 Assistant 路由到 Coordinator 动态轮次，查看真实 Agent 决策、角色执行与产物流转。</Paragraph>
         </div>
         <Space wrap>
-          <Button icon={<MessageOutlined />} onClick={() => history.push('/')}>
-            返回聊天
-          </Button>
-          <Button
-            icon={<FileTextOutlined />}
-            onClick={() => history.push('/docs')}
-          >
-            文档管理
-          </Button>
+          <Button icon={<MessageOutlined />} onClick={() => history.push('/')}>返回聊天</Button>
+          <Button icon={<FileTextOutlined />} onClick={() => history.push('/docs')}>文档管理</Button>
         </Space>
-      </div>
+      </header>
 
-      <Row gutter={[16, 16]} className={styles.summaryGrid}>
-        <Col xs={12} lg={6}>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>Runs</span>
-            <strong>{runStats.total}</strong>
-          </div>
-        </Col>
-        <Col xs={12} lg={6}>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>Steps</span>
-            <strong>{runStats.steps}</strong>
-          </div>
-        </Col>
-        <Col xs={12} lg={6}>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>异常</span>
-            <strong>{runStats.failed}</strong>
-          </div>
-        </Col>
-        <Col xs={12} lg={6}>
-          <div className={styles.metric}>
-            <span className={styles.metricLabel}>最近执行</span>
-            <strong className={styles.metricTime}>{runStats.latest}</strong>
-          </div>
-        </Col>
-      </Row>
+      <section className={styles.metrics}>
+        <div className={styles.metric}><ApiOutlined /><span>Trace 总数<strong>{stats.total}</strong></span></div>
+        <div className={styles.metric}><ApartmentOutlined /><span>Multi-Agent<strong>{stats.multi}</strong></span></div>
+        <div className={styles.metric}><ClockCircleOutlined /><span>Coordinator 轮次<strong>{stats.rounds}</strong></span></div>
+        <div className={`${styles.metric} ${stats.errors ? styles.metricDanger : ''}`}><WarningOutlined /><span>异常运行<strong>{stats.errors}</strong></span></div>
+      </section>
 
-      <Card className={styles.card}>
-        <Space className={styles.toolbar} wrap>
+      <Card className={styles.toolbarCard}>
+        <div className={styles.toolbar}>
           <Select
             className={styles.conversationSelect}
-            classNames={{ popup: { root: styles.conversationSelectDropdown } }}
-            loading={conversationLoading}
-            options={conversationOptions}
+            value={conversationId || undefined}
             placeholder="选择会话"
-            value={selectedConversationId || undefined}
-            onChange={handleConversationChange}
             showSearch
             optionFilterProp="label"
+            options={conversations.map((item) => ({ value: item.id, label: item.title || item.id }))}
+            onChange={changeConversation}
           />
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            className={styles.searchInput}
-            placeholder="搜索问题、Run ID、模型"
-            value={keyword}
-            onChange={(event) => setKeyword(event.target.value)}
-          />
-          <Select
-            className={styles.statusSelect}
-            options={statusOptions}
-            value={statusFilter}
-            onChange={setStatusFilter}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            loading={runsLoading || conversationLoading}
-            onClick={() => {
-              if (selectedConversationId) {
-                void fetchRuns(selectedConversationId);
-              } else {
-                void fetchConversations();
-              }
-            }}
+          <Input className={styles.searchInput} allowClear prefix={<SearchOutlined />} placeholder="搜索问题、Trace ID、模型" value={keyword} onChange={(event) => setKeyword(event.target.value)} />
+          <Select className={styles.typeSelect} value={type} onChange={setType} options={[{ value: 'all', label: '全部流程' }, { value: 'multi', label: 'Multi-Agent' }, { value: 'single', label: 'Single Agent' }]} />
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={() => void loadTraces(conversationId)}>刷新</Button>
+        </div>
+      </Card>
+
+      {error ? <Alert className={styles.alert} type="error" showIcon message={error} /> : null}
+      {loading && !traces.length ? <div className={styles.loading}><Spin size="large" /></div> : null}
+      {!loading && !filtered.length ? <Card className={styles.emptyCard}><Empty description={conversationId ? '当前会话暂无 Trace' : '请先选择会话'} /></Card> : null}
+
+      <section className={styles.runList}>
+        {filtered.map((item) => (
+          <button
+            type="button"
+            className={styles.runCard}
+            key={item.trace_id}
+            onClick={() => history.push(`/traces/${encodeURIComponent(item.trace_id)}?conversation_id=${encodeURIComponent(conversationId)}`)}
           >
-            刷新
-          </Button>
-        </Space>
-      </Card>
-
-      {error ? (
-        <Alert className={styles.alert} type="error" showIcon message={error} />
-      ) : null}
-
-      <Card className={styles.card} title="Run 列表">
-        <Table<AgentRunItem>
-          columns={columns}
-          dataSource={filteredRuns}
-          loading={runsLoading}
-          rowKey="id"
-          pagination={false}
-          scroll={{ x: 960 }}
-          locale={{
-            emptyText: selectedConversationId ? (
-              <Empty description="当前会话暂无 Agent Run" />
-            ) : (
-              <Empty description="请先选择会话" />
-            ),
-          }}
-          onRow={(record) => ({
-            onDoubleClick: () => openRunDetail(record.id),
-          })}
-        />
-      </Card>
+            <div className={styles.runStripe} />
+            <div className={styles.runMain}>
+              <div className={styles.runTop}>
+                <Space wrap>
+                  <Tag color={item.multi_agent.enabled ? 'geekblue' : 'default'}>{item.multi_agent.enabled ? 'MULTI AGENT' : item.mode?.toUpperCase() || 'ASSISTANT'}</Tag>
+                  <Tag color={statusColor(item.status)} icon={item.status === 'completed' ? <CheckCircleOutlined /> : undefined}>{item.status}</Tag>
+                  {item.multi_agent.review_decision ? <Tag color={item.multi_agent.review_decision === 'pass' ? 'success' : 'warning'}>review: {item.multi_agent.review_decision}</Tag> : null}
+                </Space>
+                <Text type="secondary">{formatTime(item.created_at)}</Text>
+              </div>
+              <Text className={styles.runQuestion}>{item.input || '无输入内容'}</Text>
+              <div className={styles.runMeta}>
+                <span><b>{item.multi_agent.round_count}</b> 轮决策</span>
+                <span><b>{item.multi_agent.roles_used.length}</b> 个角色</span>
+                <span><b>{item.multi_agent.artifact_count}</b> 个产物</span>
+                <span><b>{item.summary.tool_call_count || 0}</b> 次工具</span>
+                <span><b>{formatLatency(item.latency_ms)}</b> 总耗时</span>
+              </div>
+              <div className={styles.runFooter}>
+                <Text code ellipsis>{item.trace_id}</Text>
+                <span>{item.model || '-'} · {item.provider || '-'}</span>
+              </div>
+            </div>
+            <ArrowRightOutlined className={styles.openIcon} />
+          </button>
+        ))}
+      </section>
     </div>
   );
 };

@@ -540,3 +540,25 @@ ON multi_agent_artifacts(multi_agent_run_id, created_at);
 
 CREATE INDEX IF NOT EXISTS idx_multi_agent_artifacts_role
 ON multi_agent_artifacts(role, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS multi_agent_coordinator_rounds (
+  id TEXT PRIMARY KEY,
+  multi_agent_run_id TEXT NOT NULL REFERENCES multi_agent_runs(id) ON DELETE CASCADE,
+  round_index INTEGER NOT NULL,
+  decision_type TEXT NOT NULL,
+  decision JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL,
+  role TEXT,
+  role_run_id TEXT,
+  artifact_id TEXT,
+  handoff_id TEXT,
+  latency_ms INTEGER,
+  error_code TEXT,
+  error_message TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_multi_agent_coordinator_rounds_run
+ON multi_agent_coordinator_rounds(multi_agent_run_id, round_index);

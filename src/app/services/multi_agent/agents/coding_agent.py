@@ -3,17 +3,19 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from src.app.services.multi_agent.agents.base import BaseRoleAgent
 from src.app.services.multi_agent.prompts import (
     CODING_PROMPT_VERSION,
     CODING_SYSTEM_PROMPT,
 )
 from src.app.services.multi_agent.schemas import AgentArtifact, RoleRunResult
+from src.app.services.multi_agent.agents.autonomous_role_agent import AutonomousRoleAgent
 
 
-class CodingAgent(BaseRoleAgent):
+class CodingAgent(AutonomousRoleAgent):
     role = "coding"
     prompt_version = CODING_PROMPT_VERSION
+    artifact_type = "coding_proposal"
+    default_artifact_title = "CodingAgent 工程方案"
 
     def run(
         self,

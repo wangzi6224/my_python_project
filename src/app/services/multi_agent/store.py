@@ -119,6 +119,118 @@ class MultiAgentStore:
                 )
                 conn.commit()
 
+    def create_coordinator_round(
+        self,
+        round_item: Any,
+        *,
+        multi_agent_run_id: str,
+    ) -> str:
+        round_id = f"multi_agent_coordinator_round_{uuid4().hex}"
+        data = round_item.model_dump(mode="json")
+        decision = data["decision"]
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO multi_agent_coordinator_rounds (
+                        id,
+                        multi_agent_run_id,
+                        round_index,
+                        decision_type,
+                        decision,
+                        status,
+                        role,
+                        role_run_id,
+                        artifact_id,
+                        handoff_id,
+                        latency_ms,
+                        error_code,
+                        error_message,
+                        metadata
+                    ) VALUES (
+                        %(id)s,
+                        %(multi_agent_run_id)s,
+                        %(round_index)s,
+                        %(decision_type)s,
+                        %(decision)s::jsonb,
+                        %(status)s,
+                        %(role)s,
+                        %(role_run_id)s,
+                        %(artifact_id)s,
+                        %(handoff_id)s,
+                        %(latency_ms)s,
+                        %(error_code)s,
+                        %(error_message)s,
+                        %(metadata)s::jsonb
+                    )
+                    """,
+                    {
+                        "id": round_id,
+                        "multi_agent_run_id": multi_agent_run_id,
+                        "round_index": data["round_index"],
+                        "decision_type": decision["type"],
+                        "decision": _json(decision),
+                        "status": data["status"],
+                        "role": decision.get("role") or decision.get("target_role"),
+                        "role_run_id": data.get("role_run_id"),
+                        "artifact_id": data.get("artifact_id"),
+                        "handoff_id": data.get("handoff_id"),
+                        "latency_ms": data.get("latency_ms"),
+                        "error_code": data.get("error_code"),
+                        "error_message": data.get("error_message"),
+                        "metadata": _json(data.get("metadata") or {}),
+                    },
+                )
+                conn.commit()
+
+        return round_id
+
+    def update_coordinator_round(
+        self,
+        round_id: str,
+        round_item: Any,
+    ) -> None:
+        data = round_item.model_dump(mode="json")
+        decision = data["decision"]
+
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE multi_agent_coordinator_rounds
+                    SET
+                        decision_type = %(decision_type)s,
+                        decision = %(decision)s::jsonb,
+                        status = %(status)s,
+                        role = %(role)s,
+                        role_run_id = %(role_run_id)s,
+                        artifact_id = %(artifact_id)s,
+                        handoff_id = %(handoff_id)s,
+                        latency_ms = %(latency_ms)s,
+                        error_code = %(error_code)s,
+                        error_message = %(error_message)s,
+                        metadata = %(metadata)s::jsonb,
+                        updated_at = NOW()
+                    WHERE id = %(id)s
+                    """,
+                    {
+                        "id": round_id,
+                        "decision_type": decision["type"],
+                        "decision": _json(decision),
+                        "status": data["status"],
+                        "role": decision.get("role") or decision.get("target_role"),
+                        "role_run_id": data.get("role_run_id"),
+                        "artifact_id": data.get("artifact_id"),
+                        "handoff_id": data.get("handoff_id"),
+                        "latency_ms": data.get("latency_ms"),
+                        "error_code": data.get("error_code"),
+                        "error_message": data.get("error_message"),
+                        "metadata": _json(data.get("metadata") or {}),
+                    },
+                )
+                conn.commit()
+
     def create_artifact(self, artifact: Any, *, multi_agent_run_id: str) -> None:
         data = artifact.model_dump(mode="json")
         with get_connection() as conn:

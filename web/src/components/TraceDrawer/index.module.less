@@ -182,14 +182,21 @@
 
 .roleGraphSvg {
   display: block;
-  min-width: 760px;
-  height: 220px;
+  min-width: 900px;
+  height: 300px;
 }
 
 .roleGraphEdge {
   fill: none;
   stroke: rgba(0, 229, 255, 58%);
   stroke-width: 2;
+}
+
+.roleGraphEdgeDashed {
+  fill: none;
+  stroke: rgba(255, 189, 46, 72%);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 5;
 }
 
 .roleGraphArrow {
@@ -218,6 +225,26 @@
 .roleGraphNodeRectSelected {
   stroke-width: 1;
   transition: fill 0.16s ease, stroke 0.16s ease;
+}
+
+.roleGraphNode_start .roleGraphNodeRect {
+  fill: rgba(0, 229, 255, 10%);
+  stroke: rgba(0, 229, 255, 42%);
+}
+
+.roleGraphNode_decision .roleGraphNodeRect {
+  fill: rgba(99, 102, 241, 12%);
+  stroke: rgba(129, 140, 248, 48%);
+}
+
+.roleGraphNode_role .roleGraphNodeRect {
+  fill: rgba(16, 185, 129, 10%);
+  stroke: rgba(52, 211, 153, 44%);
+}
+
+.roleGraphNode_finish .roleGraphNodeRect {
+  fill: rgba(255, 61, 154, 11%);
+  stroke: rgba(255, 61, 154, 48%);
 }
 
 .roleGraphNodeRect {

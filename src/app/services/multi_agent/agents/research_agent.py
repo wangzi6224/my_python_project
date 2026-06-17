@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from src.app.config import get_mcp_allowed_tools
 from src.app.services.mcp.registry import McpRegistry
-from src.app.services.multi_agent.agents.base import BaseRoleAgent
+from src.app.services.multi_agent.agents.autonomous_role_agent import AutonomousRoleAgent
 from src.app.services.multi_agent.prompts import RESEARCH_PROMPT_VERSION
 from src.app.services.multi_agent.role_permissions import get_role_allowed_tools
 from src.app.services.multi_agent.schemas import AgentArtifact, RoleRunResult, SourceRef
@@ -16,9 +16,11 @@ from src.app.services.tools.registry import ToolRegistry
 from src.app.services.tools.search_docs import SearchDocsTool
 
 
-class ResearchAgent(BaseRoleAgent):
+class ResearchAgent(AutonomousRoleAgent):
     role = "research"
     prompt_version = RESEARCH_PROMPT_VERSION
+    artifact_type = "research_report"
+    default_artifact_title = "ResearchAgent 研究报告"
 
     def run(
         self,
